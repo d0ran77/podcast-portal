@@ -4,18 +4,18 @@ import {
   RotateCcw, RotateCw, ChevronRight, 
   ArrowLeft, Volume2, Sparkles, 
   Mic2, Moon, Sun, Tv, HeartPulse, Code2,
-  Plus, Trash2, Shield
+  Plus, Trash2, Shield, FolderPlus
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, onSnapshot, addDoc, deleteDoc } from 'firebase/firestore';
+import { getFirestore, collection, doc, onSnapshot, addDoc, deleteDoc, query } from 'firebase/firestore';
 
 /**
  * THE DESIGN SYSTEM: EDITORIAL MINIMALISM
  * Project: Talk With Liam (PodcastLD77)
+ * Logic: Fully Dynamic Series & Episode Management
  */
 
-// Updated with your NEW PodcastLD77 credentials
 const firebaseConfig = {
   apiKey: "AIzaSyBofPAKTdKGViqfBoCgO38Cl1ljigjpuUI",
   authDomain: "podcastld77.firebaseapp.com",
@@ -29,13 +29,12 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
-
-// Internal identifier for your specific app data structure
 const appId = 'podcastld77-portal'; 
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [episodes, setEpisodes] = useState([]);
+  const [seriesList, setSeriesList] = useState([]);
   const [currentTrack, setCurrentTrack] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -51,7 +50,9 @@ export default function App() {
   const [activePreset, setActivePreset] = useState('none');
 
   // Admin Form State
-  const [newEp, setNewEp] = useState({ title: '', duration: '', content: '', fileId: '', seriesId: 'series-1', season: '1' });
+  const [newEp, setNewEp] = useState({ title: '', duration: '', content: '', fileId: '', seriesId: '', season: '1' });
+  const [newSeries, setNewSeries] = useState({ title: '', description: '' });
+  const [adminTab, setAdminTab] = useState('episodes'); 
 
   const audioRef = useRef(null);
   const canvasRef = useRef(null);
@@ -60,7 +61,7 @@ export default function App() {
   const audioContextRef = useRef(null);
   const isDarkRef = useRef(isDarkMode);
 
-  // Auth & Sync Logic
+  // Auth & Initialization
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -74,26 +75,38 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Sync Series & Episodes
   useEffect(() => {
     if (!user) return;
     
-    // Standard Path: /artifacts/{appId}/public/data/episodes
+    // Listen for Series
+    const seriesCol = collection(db, 'artifacts', appId, 'public', 'data', 'series');
+    const unsubscribeSeries = onSnapshot(seriesCol, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setSeriesList(data);
+      if (data.length > 0 && !newEp.seriesId) {
+        setNewEp(prev => ({ ...prev, seriesId: data[0].id }));
+      }
+    }, (err) => console.error("Series Sync Error:", err));
+
+    // Listen for Episodes
     const episodesCol = collection(db, 'artifacts', appId, 'public', 'data', 'episodes');
-    
-    const unsubscribe = onSnapshot(episodesCol, (snapshot) => {
+    const unsubscribeEpisodes = onSnapshot(episodesCol, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const sortedData = data.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
       setEpisodes(sortedData);
       if (!currentTrack && sortedData.length > 0) setCurrentTrack(sortedData[0]);
-    }, (error) => {
-      console.error("Firestore Listen Error:", error);
-    });
+    }, (err) => console.error("Episodes Sync Error:", err));
     
-    return () => unsubscribe();
+    return () => {
+      unsubscribeSeries();
+      unsubscribeEpisodes();
+    };
   }, [user]);
 
   useEffect(() => { isDarkRef.current = isDarkMode; }, [isDarkMode]);
 
+  // Audio Logic
   const initAudioEngine = () => {
     if (audioContextRef.current) return;
     try {
@@ -109,7 +122,7 @@ export default function App() {
   };
 
   const handleAddEpisode = async () => {
-    if (!user || !newEp.title) return;
+    if (!user || !newEp.title || !newEp.seriesId) return;
     try {
       const episodesCol = collection(db, 'artifacts', appId, 'public', 'data', 'episodes');
       await addDoc(episodesCol, {
@@ -117,26 +130,32 @@ export default function App() {
         content: newEp.content.split('\n').filter(l => l.trim() !== ''),
         timestamp: Date.now()
       });
-      setNewEp({ title: '', duration: '', content: '', fileId: '', seriesId: 'series-1', season: '1' });
+      setNewEp({ ...newEp, title: '', duration: '', content: '', fileId: '' });
       setAdminOpen(false);
-    } catch (e) { 
-      console.error("Save Error:", e);
-    }
+    } catch (e) { console.error("Save Episode Error:", e); }
+  };
+
+  const handleAddSeries = async () => {
+    if (!user || !newSeries.title) return;
+    try {
+      const seriesCol = collection(db, 'artifacts', appId, 'public', 'data', 'series');
+      await addDoc(seriesCol, { ...newSeries, timestamp: Date.now() });
+      setNewSeries({ title: '', description: '' });
+    } catch (e) { console.error("Save Series Error:", e); }
   };
 
   const handleDeleteEpisode = async (id) => {
-    if (!window.confirm("Confirm deletion of this clinical entry?")) return;
-    try {
-      const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'episodes', id);
-      await deleteDoc(docRef);
-    } catch (e) {
-      console.error("Delete Error:", e);
-    }
+    if (!window.confirm("Delete this entry permanently?")) return;
+    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'episodes', id));
+  };
+
+  const handleDeleteSeries = async (id) => {
+    if (!window.confirm("Delete this category? Episodes within it won't be deleted, but won't be visible in the menu.")) return;
+    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'series', id));
   };
 
   const playEpisode = (ep) => {
     initAudioEngine();
-    // Resolve audio path: relative to /public/ folder (audio/filename.mp3) or full HTTP URL
     audioRef.current.src = ep.fileId.startsWith('http') ? ep.fileId : `/${ep.fileId}`;
     setCurrentTrack(ep);
     setIsPlaying(true);
@@ -209,13 +228,7 @@ export default function App() {
     return () => audio.removeEventListener('timeupdate', up);
   }, []);
 
-  const SERIES_METADATA = [
-    { id: 'series-1', title: "Therapeutic Dialogue", description: "Transactional Analysis and clinical insights." },
-    { id: 'series-2', title: "Synthesis Protocol", description: "Legacy archives and prototypes." },
-    { id: 'series-3', title: "Auditory Frontiers", description: "Experimental soundscapes." }
-  ];
-
-  const currentSeries = SERIES_METADATA.find(s => s.id === selectedSeriesId);
+  const currentSeries = seriesList.find(s => s.id === selectedSeriesId);
   const seriesEpisodes = episodes.filter(ep => ep.seriesId === selectedSeriesId);
 
   return (
@@ -305,15 +318,19 @@ export default function App() {
           </div>
 
           <div className="flex-grow overflow-y-auto space-y-2 custom-scrollbar pr-2">
-            {menuView === 'series' && SERIES_METADATA.map(s => (
-              <div key={s.id} onClick={() => { setSelectedSeriesId(s.id); setMenuView('episodes'); }} className={`group py-6 border-b transition-all cursor-pointer flex items-center justify-between ${isDarkMode ? 'border-[#e8e7e7]/10 hover:border-[#e8e7e7]/30' : 'border-[#1a1a1a]/10 hover:border-[#1a1a1a]/30'}`}>
-                <div>
-                  <h3 className="text-xl font-black tracking-tight mb-1 group-hover:translate-x-2 transition-transform">{s.title}</h3>
-                  <p className="text-[9px] uppercase tracking-widest opacity-40">{s.description}</p>
+            {menuView === 'series' && (
+              seriesList.length === 0 ? (
+                <div className="py-20 text-center opacity-30 text-[10px] uppercase font-bold tracking-widest">Initial setup needed in Admin</div>
+              ) : seriesList.map(s => (
+                <div key={s.id} onClick={() => { setSelectedSeriesId(s.id); setMenuView('episodes'); }} className={`group py-6 border-b transition-all cursor-pointer flex items-center justify-between ${isDarkMode ? 'border-[#e8e7e7]/10 hover:border-[#e8e7e7]/30' : 'border-[#1a1a1a]/10 hover:border-[#1a1a1a]/30'}`}>
+                  <div>
+                    <h3 className="text-xl font-black tracking-tight mb-1 group-hover:translate-x-2 transition-transform">{s.title}</h3>
+                    <p className="text-[9px] uppercase tracking-widest opacity-40">{s.description}</p>
+                  </div>
+                  <ChevronRight size={18} className="opacity-20 group-hover:opacity-100 group-hover:text-[#f28d35]" />
                 </div>
-                <ChevronRight size={18} className="opacity-20 group-hover:opacity-100 group-hover:text-[#f28d35]" />
-              </div>
-            ))}
+              ))
+            )}
 
             {menuView === 'episodes' && (
               <div className="space-y-6">
@@ -325,7 +342,7 @@ export default function App() {
                   <p className="text-[10px] uppercase opacity-40">{currentSeries?.description}</p>
                 </div>
                 {seriesEpisodes.length === 0 ? (
-                  <p className="text-[10px] uppercase opacity-30 italic">No entries published in this series yet.</p>
+                  <p className="text-[10px] uppercase opacity-30 italic">No entries published in this category.</p>
                 ) : seriesEpisodes.map(ep => (
                   <div key={ep.id} onClick={() => playEpisode(ep)} className={`py-5 border-b cursor-pointer flex justify-between items-center group ${currentTrack?.id === ep.id ? 'border-[#f28d35]' : (isDarkMode ? 'border-[#e8e7e7]/10' : 'border-[#1a1a1a]/10')}`}>
                     <h3 className={`text-sm font-bold group-hover:translate-x-2 transition-transform ${currentTrack?.id === ep.id ? 'text-[#f28d35]' : ''}`}>{ep.title}</h3>
@@ -337,11 +354,11 @@ export default function App() {
           </div>
 
           <div className={`mt-auto pt-6 flex items-center gap-8 shrink-0 border-t ${isDarkMode ? 'border-[#e8e7e7]/10' : 'border-[#1a1a1a]/10'}`}>
-            <a href="https://share.google/gYraySbO0BsSwCmd4" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 group no-underline opacity-30 hover:opacity-100 transition-all">
+            <a href="https://share.google/gYraySbO0BsSwCmd4" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 group no-underline opacity-30 hover:opacity-100 transition-all">
               <HeartPulse size={12} className="group-hover:text-[#f28d35]" />
               <span className="text-[8px] font-black uppercase tracking-widest">Practice</span>
             </a>
-            <a href="https://share.google/67Y6tixM6IhnO4jRU" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 group no-underline opacity-30 hover:opacity-100 transition-all">
+            <a href="https://share.google/67Y6tixM6IhnO4jRU" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 group no-underline opacity-30 hover:opacity-100 transition-all">
               <Code2 size={12} className="group-hover:text-[#f28d35]" />
               <span className="text-[8px] font-black uppercase tracking-widest">Developer</span>
             </a>
@@ -392,42 +409,54 @@ export default function App() {
         <div className="flex flex-col items-center justify-center min-h-screen p-8 relative">
           <button onClick={() => setAdminOpen(false)} className="absolute top-10 right-10 p-4"><X size={32} /></button>
           <div className="max-w-md w-full space-y-6">
-            <div className="text-center mb-10">
-              <h2 className="text-2xl font-black uppercase tracking-widest mb-2">Admin Control</h2>
-              <p className="text-[10px] opacity-40 uppercase tracking-widest">Publish directly to PodcastLD77</p>
-            </div>
-            <div className="space-y-4">
-              <input type="text" placeholder="Title (e.g., The Architecture of Empathy)" value={newEp.title} onChange={e => setNewEp({...newEp, title: e.target.value})} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none border border-transparent focus:border-[#f28d35]" />
-              <div className="flex gap-4">
-                <input type="text" placeholder="Duration (e.g., 45:10)" value={newEp.duration} onChange={e => setNewEp({...newEp, duration: e.target.value})} className="flex-1 bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none border border-transparent focus:border-[#f28d35]" />
-                <select value={newEp.seriesId} onChange={e => setNewEp({...newEp, seriesId: e.target.value})} className="flex-1 bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none border border-transparent focus:border-[#f28d35]">
-                  {SERIES_METADATA.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-                </select>
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-black uppercase tracking-widest mb-2">Platform Control</h2>
+              <div className="flex justify-center gap-6 mt-4">
+                <button onClick={() => setAdminTab('episodes')} className={`text-[10px] font-black uppercase tracking-widest pb-1 border-b-2 transition-all ${adminTab === 'episodes' ? 'border-[#f28d35] text-[#f28d35]' : 'border-transparent opacity-30'}`}>Episodes</button>
+                <button onClick={() => setAdminTab('series')} className={`text-[10px] font-black uppercase tracking-widest pb-1 border-b-2 transition-all ${adminTab === 'series' ? 'border-[#f28d35] text-[#f28d35]' : 'border-transparent opacity-30'}`}>Categories</button>
               </div>
-              <div className="space-y-1">
-                <input type="text" placeholder="Audio Path (e.g., audio/session-1.mp3)" value={newEp.fileId} onChange={e => setNewEp({...newEp, fileId: e.target.value})} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none border border-transparent focus:border-[#f28d35]" />
-                <p className="text-[8px] opacity-30 uppercase pl-1">Relative to the public folder</p>
-              </div>
-              <textarea placeholder="Episode Description (One line per bullet/paragraph)" rows={4} value={newEp.content} onChange={e => setNewEp({...newEp, content: e.target.value})} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none border border-transparent focus:border-[#f28d35]" />
-              <button onClick={handleAddEpisode} className="w-full py-4 bg-[#f28d35] text-white font-black uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-opacity">
-                <Plus size={20} /> Publish to Cloud
-              </button>
             </div>
-            <div className="h-[1px] bg-black/10 dark:bg-white/10 my-8" />
-            <div className="max-h-40 overflow-y-auto space-y-2 custom-scrollbar pr-2">
-              <p className="text-[10px] font-black uppercase opacity-20 mb-4">Published Archives</p>
-              {episodes.length === 0 ? (
-                <p className="text-[10px] opacity-20 italic">No cloud entries found.</p>
-              ) : episodes.map(ep => (
-                <div key={ep.id} className="flex items-center justify-between p-3 border-b border-black/5 dark:border-white/5 group">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-bold uppercase truncate max-w-[220px]">{ep.title}</span>
-                    <span className="text-[8px] opacity-30">{ep.fileId}</span>
-                  </div>
-                  <button onClick={() => handleDeleteEpisode(ep.id)} className="text-red-500 opacity-20 group-hover:opacity-100 transition-opacity p-2"><Trash2 size={16} /></button>
+
+            {adminTab === 'episodes' ? (
+              <div className="space-y-4">
+                <input type="text" placeholder="Episode Title" value={newEp.title} onChange={e => setNewEp({...newEp, title: e.target.value})} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none border border-transparent focus:border-[#f28d35]" />
+                <div className="flex gap-4">
+                  <input type="text" placeholder="Duration (e.g., 45:00)" value={newEp.duration} onChange={e => setNewEp({...newEp, duration: e.target.value})} className="flex-1 bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none border border-transparent focus:border-[#f28d35]" />
+                  <select value={newEp.seriesId} onChange={e => setNewEp({...newEp, seriesId: e.target.value})} className="flex-1 bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none border border-transparent focus:border-[#f28d35]">
+                    {seriesList.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                  </select>
                 </div>
-              ))}
-            </div>
+                <input type="text" placeholder="Audio Path (audio/session.mp3)" value={newEp.fileId} onChange={e => setNewEp({...newEp, fileId: e.target.value})} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none border border-transparent focus:border-[#f28d35]" />
+                <textarea placeholder="Description (Bullet points...)" rows={4} value={newEp.content} onChange={e => setNewEp({...newEp, content: e.target.value})} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none border border-transparent focus:border-[#f28d35]" />
+                <button onClick={handleAddEpisode} className="w-full py-4 bg-[#f28d35] text-white font-black uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-opacity">
+                  <Plus size={20} /> Publish Episode
+                </button>
+                <div className="max-h-40 overflow-y-auto space-y-2 mt-8">
+                  {episodes.map(ep => (
+                    <div key={ep.id} className="flex items-center justify-between p-3 border-b border-black/5 dark:border-white/5 group">
+                      <span className="text-[10px] font-bold uppercase truncate max-w-[200px]">{ep.title}</span>
+                      <button onClick={() => handleDeleteEpisode(ep.id)} className="text-red-500 opacity-20 group-hover:opacity-100 p-2"><Trash2 size={16} /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <input type="text" placeholder="Category Title (e.g. Synthesis Protocol)" value={newSeries.title} onChange={e => setNewSeries({...newSeries, title: e.target.value})} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none border border-transparent focus:border-[#f28d35]" />
+                <input type="text" placeholder="Short Description" value={newSeries.description} onChange={e => setNewSeries({...newSeries, description: e.target.value})} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none border border-transparent focus:border-[#f28d35]" />
+                <button onClick={handleAddSeries} className="w-full py-4 bg-[#f28d35] text-white font-black uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-opacity">
+                  <FolderPlus size={20} /> Add Category
+                </button>
+                <div className="max-h-40 overflow-y-auto space-y-2 mt-8">
+                  {seriesList.map(s => (
+                    <div key={s.id} className="flex items-center justify-between p-3 border-b border-black/5 dark:border-white/5 group">
+                      <span className="text-[10px] font-bold uppercase truncate max-w-[200px]">{s.title}</span>
+                      <button onClick={() => handleDeleteSeries(s.id)} className="text-red-500 opacity-20 group-hover:opacity-100 p-2"><Trash2 size={16} /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
