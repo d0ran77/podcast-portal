@@ -7,20 +7,32 @@ import {
   Plus, Trash2, Shield
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, onSnapshot, addDoc, deleteDoc } from 'firebase/firestore';
 
 /**
  * THE DESIGN SYSTEM: EDITORIAL MINIMALISM
- * Light: #e8e7e7 | Dark: #0a0a0a
- * Accent: #f28d35 (Vibrant Orange)
+ * Hybrid Config: Uses environment variables for Preview, Hardcoded for Production
  */
 
-const firebaseConfig = JSON.parse(__firebase_config);
+const firebaseConfig = typeof __firebase_config !== 'undefined' 
+  ? JSON.parse(__firebase_config) 
+  : {
+      apiKey: "AIzaSyB7A8ExfYr4wlO715hJPWixmMOZw9rjZmA",
+      authDomain: "podcastld.firebaseapp.com",
+      projectId: "podcastld",
+      storageBucket: "podcastld.firebasestorage.app",
+      messagingSenderId: "840314255466",
+      appId: "1:840314255466:web:a090f7a7befbdde75db213"
+    };
+
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'talk-with-liam-portal';
+
+// Sanitize App ID to remove slashes (ensures Firestore segment count remains odd)
+const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'podcastld-portal';
+const portalAppId = rawAppId.replace(/\//g, '_');
 
 const SERIES_METADATA = [
   { id: 'series-1', title: "Therapeutic Dialogue", description: "Transactional Analysis and clinical insights." },
@@ -45,7 +57,6 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [activePreset, setActivePreset] = useState('none');
 
-  // Admin Form State
   const [newEp, setNewEp] = useState({ title: '', duration: '', content: '', fileId: '', seriesId: 'series-1', season: '1' });
 
   const audioRef = useRef(null);
@@ -55,24 +66,45 @@ export default function App() {
   const audioContextRef = useRef(null);
   const isDarkRef = useRef(isDarkMode);
 
-  // Auth & Sync
+  // 1. ROBUST AUTH (Follows RULE 3)
   useEffect(() => {
-    signInAnonymously(auth).catch(e => console.error("Auth Error:", e));
-    const unsubscribe = onAuthStateChanged(auth, setUser);
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (e) {
+        console.error("Auth Error:", e);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+    });
     return () => unsubscribe();
   }, []);
 
+  // 2. DATA SYNC (FIRESTORE)
   useEffect(() => {
     if (!user) return;
-    const episodesCol = collection(db, 'artifacts', appId, 'public', 'data', 'episodes');
+    const episodesCol = collection(db, 'artifacts', portalAppId, 'public', 'data', 'episodes');
+    
     const unsubscribe = onSnapshot(episodesCol, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const sortedData = data.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
       setEpisodes(sortedData);
-      if (!currentTrack && sortedData.length > 0) setCurrentTrack(sortedData[0]);
+      // Auto-set track if none selected
+      if (!currentTrack && sortedData.length > 0) {
+        setCurrentTrack(sortedData[0]);
+      }
+    }, (err) => {
+      console.error("Firestore Permission Error:", err);
     });
+
     return () => unsubscribe();
-  }, [user]);
+  }, [user, portalAppId, currentTrack]);
 
   useEffect(() => { isDarkRef.current = isDarkMode; }, [isDarkMode]);
 
@@ -92,7 +124,7 @@ export default function App() {
 
   const handleAddEpisode = async () => {
     if (!user || !newEp.title) return;
-    const episodesCol = collection(db, 'artifacts', appId, 'public', 'data', 'episodes');
+    const episodesCol = collection(db, 'artifacts', portalAppId, 'public', 'data', 'episodes');
     await addDoc(episodesCol, {
       ...newEp,
       content: newEp.content.split('\n').filter(l => l.trim() !== ''),
@@ -104,7 +136,7 @@ export default function App() {
 
   const handleDeleteEpisode = async (id) => {
     if (!window.confirm("Delete this entry?")) return;
-    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'episodes', id);
+    const docRef = doc(db, 'artifacts', portalAppId, 'public', 'data', 'episodes', id);
     await deleteDoc(docRef);
   };
 
@@ -326,14 +358,16 @@ export default function App() {
             <p className="text-[10px] font-black uppercase tracking-[0.6em] text-[#f28d35] mb-12 text-center">Audio Profiles</p>
             <div className="space-y-2 mb-16">
               {[
-                { id: 'studio', name: 'Studio', icon: <Mic2 size={20}/>, desc: 'Pro Tone' },
-                { id: 'midnight', name: 'Midnight', icon: <Moon size={20}/>, desc: 'Quiet Vibe' },
-                { id: 'vivid', name: 'Vivid', icon: <Sparkles size={20}/>, desc: 'High Detail' },
-                { id: 'spatial', name: 'Spatial', icon: <Tv size={20}/>, desc: 'Clinical' }
+                { id: 'studio', name: 'Studio', Icon: Mic2, desc: 'Pro Tone' },
+                { id: 'midnight', name: 'Midnight', Icon: Moon, desc: 'Quiet Vibe' },
+                { id: 'vivid', name: 'Vivid', Icon: Sparkles, desc: 'High Detail' },
+                { id: 'spatial', name: 'Spatial', Icon: Tv, desc: 'Clinical' }
               ].map(p => (
                 <div key={p.id} onClick={() => setActivePreset(p.id)} className={`py-6 border-b cursor-pointer flex items-center justify-between group ${activePreset === p.id ? 'border-[#f28d35]' : 'border-white/10'}`}>
                   <div className="flex items-center gap-6">
-                    <div className={activePreset === p.id ? 'text-[#f28d35]' : 'opacity-20'}>{p.icon}</div>
+                    <div className={activePreset === p.id ? 'text-[#f28d35]' : 'opacity-20'}>
+                      <p.Icon size={20} />
+                    </div>
                     <div>
                       <h3 className={`text-xl font-black group-hover:translate-x-2 transition-transform ${activePreset === p.id ? 'text-[#f28d35]' : ''}`}>{p.name}</h3>
                       <p className="text-[9px] uppercase tracking-widest opacity-40">{p.desc}</p>
