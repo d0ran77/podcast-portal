@@ -4,38 +4,37 @@ import {
   RotateCcw, RotateCw, ChevronRight, 
   ArrowLeft, Volume2, Sparkles, 
   Mic2, Moon, Sun, Tv, HeartPulse, Code2,
-  Plus, Trash2, Shield, Lock
+  Plus, Trash2, Shield
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, onSnapshot, addDoc, deleteDoc } from 'firebase/firestore';
 
 /**
  * THE DESIGN SYSTEM: EDITORIAL MINIMALISM
- * Restored: Practice Links, Developer Links, & Audio Profiles
+ * Project: Talk With Liam (PodcastLD77)
  */
 
-const firebaseConfig = typeof __firebase_config !== 'undefined' 
-  ? JSON.parse(__firebase_config) 
-  : {
-      apiKey: "AIzaSyB7A8ExfYr4wlO715hJPWixmMOZw9rjZmA",
-      authDomain: "podcastld.firebaseapp.com",
-      projectId: "podcastld",
-      storageBucket: "podcastld.firebasestorage.app",
-      messagingSenderId: "840314255466",
-      appId: "1:840314255466:web:a090f7a7befbdde75db213"
-    };
+// Updated with your NEW PodcastLD77 credentials
+const firebaseConfig = {
+  apiKey: "AIzaSyBofPAKTdKGViqfBoCgO38Cl1ljigjpuUI",
+  authDomain: "podcastld77.firebaseapp.com",
+  projectId: "podcastld77",
+  storageBucket: "podcastld77.firebasestorage.app",
+  messagingSenderId: "705191404419",
+  appId: "1:705191404419:web:372cf334def7d0b913ccb6",
+  measurementId: "G-CR6R2ZV96P"
+};
 
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 
-const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'podcastld-portal';
-const portalAppId = rawAppId.replace(/\//g, '_');
+// Internal identifier for your specific app data structure
+const appId = 'podcastld77-portal'; 
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [series, setSeries] = useState([]);
   const [episodes, setEpisodes] = useState([]);
   const [currentTrack, setCurrentTrack] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -51,11 +50,8 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [activePreset, setActivePreset] = useState('none');
 
-  // Admin States
-  const [adminPass, setAdminPass] = useState("");
-  const [isAuthorized, setIsAuthorized] = useState(false);
-  const [newSeries, setNewSeries] = useState({ title: '', description: '' });
-  const [newEp, setNewEp] = useState({ title: '', duration: '', content: '', fileId: '', seriesId: '', season: '1' });
+  // Admin Form State
+  const [newEp, setNewEp] = useState({ title: '', duration: '', content: '', fileId: '', seriesId: 'series-1', season: '1' });
 
   const audioRef = useRef(null);
   const canvasRef = useRef(null);
@@ -64,90 +60,84 @@ export default function App() {
   const audioContextRef = useRef(null);
   const isDarkRef = useRef(isDarkMode);
 
-  // 1. AUTH
+  // Auth & Sync Logic
   useEffect(() => {
     const initAuth = async () => {
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (e) { console.error("Auth Error:", e); }
+        await signInAnonymously(auth);
+      } catch (e) {
+        console.error("Auth failed:", e);
+      }
     };
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, setUser);
     return () => unsubscribe();
   }, []);
 
-  // 2. DATA SYNC
   useEffect(() => {
     if (!user) return;
     
-    const seriesCol = collection(db, 'artifacts', portalAppId, 'public', 'data', 'series');
-    const unsubSeries = onSnapshot(seriesCol, (snap) => {
-      setSeries(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    // Standard Path: /artifacts/{appId}/public/data/episodes
+    const episodesCol = collection(db, 'artifacts', appId, 'public', 'data', 'episodes');
+    
+    const unsubscribe = onSnapshot(episodesCol, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const sortedData = data.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      setEpisodes(sortedData);
+      if (!currentTrack && sortedData.length > 0) setCurrentTrack(sortedData[0]);
+    }, (error) => {
+      console.error("Firestore Listen Error:", error);
     });
-
-    const episodesCol = collection(db, 'artifacts', portalAppId, 'public', 'data', 'episodes');
-    const unsubEps = onSnapshot(episodesCol, (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const sorted = data.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-      setEpisodes(sorted);
-      if (!currentTrack && sorted.length > 0) setCurrentTrack(sorted[0]);
-    });
-
-    return () => { unsubSeries(); unsubEps(); };
-  }, [user, portalAppId, currentTrack]);
+    
+    return () => unsubscribe();
+  }, [user]);
 
   useEffect(() => { isDarkRef.current = isDarkMode; }, [isDarkMode]);
 
-  // --- ACTIONS ---
-  const handleAdminGate = () => {
-    if (adminPass === "portal") {
-      setIsAuthorized(true);
-      setAdminPass("");
-    } else {
-      alert("Invalid Access Code");
-    }
-  };
-
-  const handleAddSeries = async () => {
-    if (!newSeries.title) return;
-    const col = collection(db, 'artifacts', portalAppId, 'public', 'data', 'series');
-    await addDoc(col, { ...newSeries, timestamp: Date.now() });
-    setNewSeries({ title: '', description: '' });
+  const initAudioEngine = () => {
+    if (audioContextRef.current) return;
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioContext();
+      const source = ctx.createMediaElementSource(audioRef.current);
+      const analyzer = ctx.createAnalyser();
+      analyzer.fftSize = 512;
+      source.connect(analyzer);
+      analyzer.connect(ctx.destination);
+      audioContextRef.current = ctx; analyzerRef.current = analyzer;
+    } catch (e) { console.error(e); }
   };
 
   const handleAddEpisode = async () => {
-    if (!newEp.title || !newEp.seriesId) return;
-    const col = collection(db, 'artifacts', portalAppId, 'public', 'data', 'episodes');
-    await addDoc(col, {
-      ...newEp,
-      content: newEp.content.split('\n').filter(l => l.trim() !== ''),
-      timestamp: Date.now()
-    });
-    setNewEp({ title: '', duration: '', content: '', fileId: '', seriesId: newEp.seriesId, season: '1' });
+    if (!user || !newEp.title) return;
+    try {
+      const episodesCol = collection(db, 'artifacts', appId, 'public', 'data', 'episodes');
+      await addDoc(episodesCol, {
+        ...newEp,
+        content: newEp.content.split('\n').filter(l => l.trim() !== ''),
+        timestamp: Date.now()
+      });
+      setNewEp({ title: '', duration: '', content: '', fileId: '', seriesId: 'series-1', season: '1' });
+      setAdminOpen(false);
+    } catch (e) { 
+      console.error("Save Error:", e);
+    }
   };
 
-  const deleteItem = async (colName, id) => {
-    if (!window.confirm("Permanent delete?")) return;
-    const docRef = doc(db, 'artifacts', portalAppId, 'public', 'data', colName, id);
-    await deleteDoc(docRef);
+  const handleDeleteEpisode = async (id) => {
+    if (!window.confirm("Confirm deletion of this clinical entry?")) return;
+    try {
+      const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'episodes', id);
+      await deleteDoc(docRef);
+    } catch (e) {
+      console.error("Delete Error:", e);
+    }
   };
 
   const playEpisode = (ep) => {
-    if (!audioContextRef.current) {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        const ctx = new AudioContext();
-        const source = ctx.createMediaElementSource(audioRef.current);
-        const analyzer = ctx.createAnalyser();
-        analyzer.fftSize = 512;
-        source.connect(analyzer);
-        analyzer.connect(ctx.destination);
-        audioContextRef.current = ctx; analyzerRef.current = analyzer;
-    }
-    audioRef.current.src = ep.fileId.startsWith('http') ? ep.fileId : `audio/${ep.fileId}`;
+    initAudioEngine();
+    // Resolve audio path: relative to /public/ folder (audio/filename.mp3) or full HTTP URL
+    audioRef.current.src = ep.fileId.startsWith('http') ? ep.fileId : `/${ep.fileId}`;
     setCurrentTrack(ep);
     setIsPlaying(true);
     setProgress(0);
@@ -165,20 +155,24 @@ export default function App() {
     const ctx = canvas.getContext('2d');
     const analyzer = analyzerRef.current;
     const dataArray = new Uint8Array(analyzer.frequencyBinCount);
+    
     const render = () => {
       animationRef.current = requestAnimationFrame(render);
       analyzer.getByteFrequencyData(dataArray);
       let sum = 0; for(let i=0; i<dataArray.length; i++) sum += dataArray[i];
       const curIntensity = sum / dataArray.length / 255;
       setIntensity(curIntensity);
+      
       ctx.fillStyle = isDarkRef.current ? 'rgba(10, 10, 10, 0.3)' : 'rgba(232, 231, 231, 0.3)'; 
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
       const w = canvas.width, h = canvas.height, mid = h / 2;
       ctx.beginPath();
       ctx.lineWidth = 1.5 + (curIntensity * 14);
       ctx.strokeStyle = '#f28d35';
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       ctx.moveTo(0, mid);
+      
       const limit = Math.floor(dataArray.length / 2.8), slices = w / limit;
       let x = 0;
       for (let i = 0; i < limit; i++) {
@@ -215,7 +209,13 @@ export default function App() {
     return () => audio.removeEventListener('timeupdate', up);
   }, []);
 
-  const currentSeries = series.find(s => s.id === selectedSeriesId);
+  const SERIES_METADATA = [
+    { id: 'series-1', title: "Therapeutic Dialogue", description: "Transactional Analysis and clinical insights." },
+    { id: 'series-2', title: "Synthesis Protocol", description: "Legacy archives and prototypes." },
+    { id: 'series-3', title: "Auditory Frontiers", description: "Experimental soundscapes." }
+  ];
+
+  const currentSeries = SERIES_METADATA.find(s => s.id === selectedSeriesId);
   const seriesEpisodes = episodes.filter(ep => ep.seriesId === selectedSeriesId);
 
   return (
@@ -258,8 +258,10 @@ export default function App() {
           <div className="flex flex-col items-center gap-10">
             <div className="flex items-center gap-10">
               <button onClick={() => audioRef.current.currentTime -= 15} className="opacity-10 hover:opacity-100 transition-opacity"><RotateCcw size={24} /></button>
-              <button onClick={() => {
+              <button onClick={async () => {
                 if (!currentTrack) return;
+                initAudioEngine();
+                if (audioContextRef.current?.state === 'suspended') await audioContextRef.current.resume();
                 isPlaying ? audioRef.current.pause() : audioRef.current.play();
                 setIsPlaying(!isPlaying);
               }} className={`w-24 h-24 rounded-full flex items-center justify-center shadow-2xl transition-transform hover:scale-105 active:scale-95 ${isDarkMode ? 'bg-[#e8e7e7] text-[#0a0a0a]' : 'bg-[#1a1a1a] text-[#e8e7e7]'}`}>
@@ -303,7 +305,7 @@ export default function App() {
           </div>
 
           <div className="flex-grow overflow-y-auto space-y-2 custom-scrollbar pr-2">
-            {menuView === 'series' && series.map(s => (
+            {menuView === 'series' && SERIES_METADATA.map(s => (
               <div key={s.id} onClick={() => { setSelectedSeriesId(s.id); setMenuView('episodes'); }} className={`group py-6 border-b transition-all cursor-pointer flex items-center justify-between ${isDarkMode ? 'border-[#e8e7e7]/10 hover:border-[#e8e7e7]/30' : 'border-[#1a1a1a]/10 hover:border-[#1a1a1a]/30'}`}>
                 <div>
                   <h3 className="text-xl font-black tracking-tight mb-1 group-hover:translate-x-2 transition-transform">{s.title}</h3>
@@ -322,7 +324,9 @@ export default function App() {
                   <h3 className="text-2xl font-black tracking-tight mb-2">{currentSeries?.title}</h3>
                   <p className="text-[10px] uppercase opacity-40">{currentSeries?.description}</p>
                 </div>
-                {seriesEpisodes.map(ep => (
+                {seriesEpisodes.length === 0 ? (
+                  <p className="text-[10px] uppercase opacity-30 italic">No entries published in this series yet.</p>
+                ) : seriesEpisodes.map(ep => (
                   <div key={ep.id} onClick={() => playEpisode(ep)} className={`py-5 border-b cursor-pointer flex justify-between items-center group ${currentTrack?.id === ep.id ? 'border-[#f28d35]' : (isDarkMode ? 'border-[#e8e7e7]/10' : 'border-[#1a1a1a]/10')}`}>
                     <h3 className={`text-sm font-bold group-hover:translate-x-2 transition-transform ${currentTrack?.id === ep.id ? 'text-[#f28d35]' : ''}`}>{ep.title}</h3>
                     <span className="text-[9px] font-mono opacity-40 uppercase">{ep.duration}</span>
@@ -332,25 +336,24 @@ export default function App() {
             )}
           </div>
 
-          {/* SIDEBAR FOOTER: Restored utility links */}
           <div className={`mt-auto pt-6 flex items-center gap-8 shrink-0 border-t ${isDarkMode ? 'border-[#e8e7e7]/10' : 'border-[#1a1a1a]/10'}`}>
-            <a href="https://share.google/gYraySbO0BsSwCmd4" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 group no-underline opacity-30 hover:opacity-100 transition-all">
+            <a href="https://share.google/gYraySbO0BsSwCmd4" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 group no-underline opacity-30 hover:opacity-100 transition-all">
               <HeartPulse size={12} className="group-hover:text-[#f28d35]" />
               <span className="text-[8px] font-black uppercase tracking-widest">Practice</span>
             </a>
-            <a href="https://share.google/67Y6tixM6IhnO4jRU" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 group no-underline opacity-30 hover:opacity-100 transition-all">
+            <a href="https://share.google/67Y6tixM6IhnO4jRU" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 group no-underline opacity-30 hover:opacity-100 transition-all">
               <Code2 size={12} className="group-hover:text-[#f28d35]" />
               <span className="text-[8px] font-black uppercase tracking-widest">Developer</span>
             </a>
             <button onClick={() => { setAdminOpen(true); setMenuOpen(false); }} className="flex items-center gap-2 group opacity-30 hover:opacity-100 transition-all">
               <Shield size={12} className="group-hover:text-[#f28d35]" />
-              <span className="text-[8px] font-black uppercase tracking-widest">Admin Control</span>
+              <span className="text-[8px] font-black uppercase tracking-widest">Admin</span>
             </button>
           </div>
         </aside>
       </div>
 
-      {/* FX Settings Menu: Restored options */}
+      {/* FX Settings Menu */}
       <div className={`fixed inset-0 z-[60] backdrop-blur-3xl transition-all duration-700 ${fxOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} ${isDarkMode ? 'bg-[#0a0a0a]/95' : 'bg-[#e8e7e7]/95'}`} onClick={() => setFxOpen(false)}>
         <div className="flex flex-col items-center justify-center min-h-screen p-8" onClick={e => e.stopPropagation()}>
           <button onClick={() => setFxOpen(false)} className="absolute top-10 right-10 p-4"><X size={32} /></button>
@@ -358,16 +361,14 @@ export default function App() {
             <p className="text-[10px] font-black uppercase tracking-[0.6em] text-[#f28d35] mb-12 text-center">Audio Profiles</p>
             <div className="space-y-2 mb-16">
               {[
-                { id: 'studio', name: 'Studio', Icon: Mic2, desc: 'Professional level presence' },
-                { id: 'midnight', name: 'Midnight', Icon: Moon, desc: 'Subtle, dark soundscape' },
-                { id: 'vivid', name: 'Vivid', Icon: Sparkles, desc: 'High definition clarity' },
-                { id: 'spatial', name: 'Spatial', Icon: Tv, desc: 'Clinical room synthesis' }
+                { id: 'studio', name: 'Studio', icon: <Mic2 size={20}/>, desc: 'Pro Tone' },
+                { id: 'midnight', name: 'Midnight', icon: <Moon size={20}/>, desc: 'Quiet Vibe' },
+                { id: 'vivid', name: 'Vivid', icon: <Sparkles size={20}/>, desc: 'High Detail' },
+                { id: 'spatial', name: 'Spatial', icon: <Tv size={20}/>, desc: 'Clinical' }
               ].map(p => (
                 <div key={p.id} onClick={() => setActivePreset(p.id)} className={`py-6 border-b cursor-pointer flex items-center justify-between group ${activePreset === p.id ? 'border-[#f28d35]' : 'border-white/10'}`}>
                   <div className="flex items-center gap-6">
-                    <div className={activePreset === p.id ? 'text-[#f28d35]' : 'opacity-20'}>
-                      <p.Icon size={20} />
-                    </div>
+                    <div className={activePreset === p.id ? 'text-[#f28d35]' : 'opacity-20'}>{p.icon}</div>
                     <div>
                       <h3 className={`text-xl font-black group-hover:translate-x-2 transition-transform ${activePreset === p.id ? 'text-[#f28d35]' : ''}`}>{p.name}</h3>
                       <p className="text-[9px] uppercase tracking-widest opacity-40">{p.desc}</p>
@@ -386,84 +387,50 @@ export default function App() {
         </div>
       </div>
 
-      {/* Admin Dashboard / Auth Gate */}
+      {/* Admin Dashboard */}
       <div className={`fixed inset-0 z-[80] backdrop-blur-3xl transition-all duration-700 ${adminOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} ${isDarkMode ? 'bg-[#0a0a0a]/98' : 'bg-[#e8e7e7]/98'}`}>
         <div className="flex flex-col items-center justify-center min-h-screen p-8 relative">
-          <button onClick={() => { setAdminOpen(false); setIsAuthorized(false); }} className="absolute top-10 right-10 p-4"><X size={32} /></button>
-          
-          {!isAuthorized ? (
-            <div className="max-w-xs w-full space-y-6 text-center">
-              <div className="w-16 h-16 rounded-full bg-[#f28d35]/10 flex items-center justify-center mx-auto mb-8">
-                <Lock size={24} className="text-[#f28d35]" />
-              </div>
-              <h2 className="text-xl font-black uppercase tracking-widest">Secure Access</h2>
-              <input 
-                type="password" 
-                placeholder="Access Code" 
-                value={adminPass} 
-                onChange={e => setAdminPass(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleAdminGate()}
-                className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none text-center border border-transparent focus:border-[#f28d35]" 
-              />
-              <button onClick={handleAdminGate} className="w-full py-4 bg-[#f28d35] text-white font-black uppercase tracking-widest rounded-xl">Unlock</button>
+          <button onClick={() => setAdminOpen(false)} className="absolute top-10 right-10 p-4"><X size={32} /></button>
+          <div className="max-w-md w-full space-y-6">
+            <div className="text-center mb-10">
+              <h2 className="text-2xl font-black uppercase tracking-widest mb-2">Admin Control</h2>
+              <p className="text-[10px] opacity-40 uppercase tracking-widest">Publish directly to PodcastLD77</p>
             </div>
-          ) : (
-            <div className="max-w-2xl w-full flex flex-col md:flex-row gap-12 overflow-y-auto max-h-[80vh] custom-scrollbar p-4">
-              
-              {/* Left Column: Series Management */}
-              <div className="flex-1 space-y-8">
-                <div>
-                  <h3 className="text-[10px] font-black uppercase tracking-[0.4em] opacity-40 mb-6">Manage Library Folders</h3>
-                  <div className="space-y-4">
-                    <input type="text" placeholder="Series Title" value={newSeries.title} onChange={e => setNewSeries({...newSeries, title: e.target.value})} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none" />
-                    <input type="text" placeholder="Brief Description" value={newSeries.description} onChange={e => setNewSeries({...newSeries, description: e.target.value})} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none" />
-                    <button onClick={handleAddSeries} className="w-full py-3 border border-[#f28d35] text-[#f28d35] font-black uppercase tracking-widest rounded-xl hover:bg-[#f28d35] hover:text-white transition-all">Add Folder</button>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                   {series.map(s => (
-                     <div key={s.id} className="flex items-center justify-between p-3 bg-black/5 dark:bg-white/5 rounded-lg">
-                       <span className="text-xs font-bold truncate">{s.title}</span>
-                       <button onClick={() => deleteItem('series', s.id)} className="text-red-500 opacity-40 hover:opacity-100"><Trash2 size={14}/></button>
-                     </div>
-                   ))}
-                </div>
+            <div className="space-y-4">
+              <input type="text" placeholder="Title (e.g., The Architecture of Empathy)" value={newEp.title} onChange={e => setNewEp({...newEp, title: e.target.value})} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none border border-transparent focus:border-[#f28d35]" />
+              <div className="flex gap-4">
+                <input type="text" placeholder="Duration (e.g., 45:10)" value={newEp.duration} onChange={e => setNewEp({...newEp, duration: e.target.value})} className="flex-1 bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none border border-transparent focus:border-[#f28d35]" />
+                <select value={newEp.seriesId} onChange={e => setNewEp({...newEp, seriesId: e.target.value})} className="flex-1 bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none border border-transparent focus:border-[#f28d35]">
+                  {SERIES_METADATA.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                </select>
               </div>
-
-              {/* Right Column: Episode Management */}
-              <div className="flex-1 space-y-8">
-                <div>
-                  <h3 className="text-[10px] font-black uppercase tracking-[0.4em] opacity-40 mb-6">Publish Episode</h3>
-                  <div className="space-y-4">
-                    <select value={newEp.seriesId} onChange={e => setNewEp({...newEp, seriesId: e.target.value})} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none">
-                      <option value="">Select Series Folder</option>
-                      {series.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-                    </select>
-                    <input type="text" placeholder="Episode Title" value={newEp.title} onChange={e => setNewEp({...newEp, title: e.target.value})} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none" />
-                    <div className="flex gap-4">
-                       <input type="text" placeholder="Duration (45:00)" value={newEp.duration} onChange={e => setNewEp({...newEp, duration: e.target.value})} className="flex-1 bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none" />
-                       <input type="text" placeholder="Season #" value={newEp.season} onChange={e => setNewEp({...newEp, season: e.target.value})} className="w-24 bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none" />
-                    </div>
-                    <input type="text" placeholder="MP3 Link / File Name" value={newEp.fileId} onChange={e => setNewEp({...newEp, fileId: e.target.value})} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none" />
-                    <textarea placeholder="Description (Bullet points)" rows={3} value={newEp.content} onChange={e => setNewEp({...newEp, content: e.target.value})} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none" />
-                    <button onClick={handleAddEpisode} className="w-full py-4 bg-[#f28d35] text-white font-black uppercase tracking-widest rounded-xl">Publish Entry</button>
-                  </div>
-                </div>
-                <div className="max-h-40 overflow-y-auto space-y-2 custom-scrollbar">
-                  {episodes.map(ep => (
-                    <div key={ep.id} className="flex items-center justify-between p-3 border-b border-black/5 dark:border-white/5">
-                      <span className="text-[10px] font-bold uppercase truncate max-w-[150px]">{ep.title}</span>
-                      <button onClick={() => deleteItem('episodes', ep.id)} className="text-red-500 opacity-40 hover:opacity-100"><Trash2 size={14}/></button>
-                    </div>
-                  ))}
-                </div>
+              <div className="space-y-1">
+                <input type="text" placeholder="Audio Path (e.g., audio/session-1.mp3)" value={newEp.fileId} onChange={e => setNewEp({...newEp, fileId: e.target.value})} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none border border-transparent focus:border-[#f28d35]" />
+                <p className="text-[8px] opacity-30 uppercase pl-1">Relative to the public folder</p>
               </div>
-
+              <textarea placeholder="Episode Description (One line per bullet/paragraph)" rows={4} value={newEp.content} onChange={e => setNewEp({...newEp, content: e.target.value})} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none border border-transparent focus:border-[#f28d35]" />
+              <button onClick={handleAddEpisode} className="w-full py-4 bg-[#f28d35] text-white font-black uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-opacity">
+                <Plus size={20} /> Publish to Cloud
+              </button>
             </div>
-          )}
+            <div className="h-[1px] bg-black/10 dark:bg-white/10 my-8" />
+            <div className="max-h-40 overflow-y-auto space-y-2 custom-scrollbar pr-2">
+              <p className="text-[10px] font-black uppercase opacity-20 mb-4">Published Archives</p>
+              {episodes.length === 0 ? (
+                <p className="text-[10px] opacity-20 italic">No cloud entries found.</p>
+              ) : episodes.map(ep => (
+                <div key={ep.id} className="flex items-center justify-between p-3 border-b border-black/5 dark:border-white/5 group">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold uppercase truncate max-w-[220px]">{ep.title}</span>
+                    <span className="text-[8px] opacity-30">{ep.fileId}</span>
+                  </div>
+                  <button onClick={() => handleDeleteEpisode(ep.id)} className="text-red-500 opacity-20 group-hover:opacity-100 transition-opacity p-2"><Trash2 size={16} /></button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
-
     </div>
   );
 }
