@@ -1,5 +1,5 @@
 git add .
-
-git commit -m "Updated episode descriptions"
-
+git commit -m "update"
 git push
+npm run build
+firebase deploy
