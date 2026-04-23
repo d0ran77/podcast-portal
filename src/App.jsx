@@ -11,14 +11,6 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 
-/**
- * PROJECT: TALK WITH LIAM: SESSIONS
- * PROJECT ID: podcastld77
- * FIXED: handleTrackEnd ReferenceError
- * FIXED: Layout Centering (Vertical and Horizontal)
- * FIXED: High-Fidelity Visualizer with motion blur
- */
-
 const firebaseConfig = {
   apiKey: "AIzaSyBofPAKTdKGViqfBoCgO38Cl1ljigjpuUI",
   authDomain: "podcastld77.firebaseapp.com",
@@ -65,6 +57,7 @@ export default function App() {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [adminTab, setAdminTab] = useState('episodes');
   
+  // Edit State added here
   const [editingId, setEditingId] = useState(null);
   const [newSeries, setNewSeries] = useState({ title: '', description: '' });
   const [newEp, setNewEp] = useState({ title: '', duration: '', content: '', fileId: '', seriesId: '', season: '1' });
@@ -73,9 +66,6 @@ export default function App() {
   const canvasRef = useRef(null);
   const analyzerRef = useRef(null);
   const audioContextRef = useRef(null);
-  const humGainRef = useRef(null);
-  const eqRef = useRef(null);
-  const spatialWetRef = useRef(null);
   const lastActive = useRef(Date.now()); 
 
   const brandAccent = isDarkMode ? '#ff8c00' : '#f28d35';
@@ -288,7 +278,11 @@ export default function App() {
     else alert("Invalid Access Code");
   };
 
-  const handleEditSeries = (s) => { setEditingId(s.id); setNewSeries({ title: s.title, description: s.description || '' }); };
+  // The actual functions for editing:
+  const handleEditSeries = (s) => { 
+    setEditingId(s.id); 
+    setNewSeries({ title: s.title, description: s.description || '' }); 
+  };
   const handleEditEpisode = (ep) => {
     setEditingId(ep.id);
     setNewEp({
@@ -296,6 +290,13 @@ export default function App() {
       content: Array.isArray(ep.content) ? ep.content.join('\n') : (ep.content || ''),
       fileId: ep.fileId, seriesId: ep.seriesId, season: ep.season || '1'
     });
+  };
+
+  // Cancels the edit and resets the form
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setNewSeries({ title: '', description: '' });
+    setNewEp({ title: '', duration: '', content: '', fileId: '', seriesId: '', season: '1' });
   };
 
   const handleSaveSeries = async () => {
@@ -404,15 +405,6 @@ export default function App() {
                 <div className={`w-2 h-2 rounded-full ${hapticSubBass ? 'bg-[var(--brand-accent)]' : 'bg-current opacity-20'}`}/>
               </div>
             </div>
-            <div>
-              <span className="text-[12px] font-black uppercase tracking-widest opacity-40 mb-4 block">Audio Profiles</span>
-              {['studio', 'midnight', 'vivid', 'spatial'].map(p => (
-                <div key={p} onClick={() => setActivePreset(p)} className="py-4 border-b border-current/5 cursor-pointer flex justify-between items-center capitalize">
-                  <span className={`text-[13px] font-bold ${activePreset === p ? 'text-[var(--brand-accent)]' : ''}`}>{p}</span>
-                  {activePreset === p && <div className="w-2 h-2 rounded-full bg-[var(--brand-accent)]"/>}
-                </div>
-              ))}
-            </div>
           </div>
           <button onClick={() => setFxOpen(false)} className="mt-auto py-6 text-[12px] font-black uppercase tracking-[0.5em] opacity-80 hover:text-[var(--brand-accent)] border-t border-white/10">Close Specs</button>
         </aside>
@@ -468,7 +460,7 @@ export default function App() {
 
       <div className={`fixed inset-0 z-[130] backdrop-blur-3xl transition-all duration-700 ${adminOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} ${isDarkMode ? 'bg-black/98' : 'bg-white/98'}`}>
         <div className="flex flex-col items-center justify-center min-h-screen p-6 relative">
-          <button onClick={() => { setAdminOpen(false); setIsAuthorized(false); }} className="absolute top-6 right-6 p-4 opacity-70 hover:opacity-100"><X size={24} /></button>
+          <button onClick={() => { setAdminOpen(false); setIsAuthorized(false); handleCancelEdit(); }} className="absolute top-6 right-6 p-4 opacity-70 hover:opacity-100"><X size={24} /></button>
           {!isAuthorized ? (
             <div className="max-w-xs w-full space-y-6 text-center">
               <Lock size={20} className="mx-auto" style={{ color: brandAccent }} />
@@ -478,25 +470,38 @@ export default function App() {
           ) : (
             <div className="max-w-2xl w-full p-2 overflow-y-auto max-h-[85vh] hide-scrollbar">
                <div className="flex justify-center gap-6 mb-8">
-                <button onClick={() => setAdminTab('episodes')} className={`text-[12px] font-black uppercase pb-1 border-b-2 transition-all ${adminTab === 'episodes' ? 'border-[var(--brand-accent)] text-[var(--brand-accent)]' : 'border-transparent opacity-40'}`}>Episodes</button>
-                <button onClick={() => setAdminTab('series')} className={`text-[12px] font-black uppercase pb-1 border-b-2 transition-all ${adminTab === 'series' ? 'border-[var(--brand-accent)] text-[var(--brand-accent)]' : 'border-transparent opacity-40'}`}>Categories</button>
+                <button onClick={() => { setAdminTab('episodes'); handleCancelEdit(); }} className={`text-[12px] font-black uppercase pb-1 border-b-2 transition-all ${adminTab === 'episodes' ? 'border-[var(--brand-accent)] text-[var(--brand-accent)]' : 'border-transparent opacity-40'}`}>Episodes</button>
+                <button onClick={() => { setAdminTab('series'); handleCancelEdit(); }} className={`text-[12px] font-black uppercase pb-1 border-b-2 transition-all ${adminTab === 'series' ? 'border-[var(--brand-accent)] text-[var(--brand-accent)]' : 'border-transparent opacity-40'}`}>Categories</button>
               </div>
               {adminTab === 'series' ? (
                 <div className="space-y-4 max-w-md mx-auto">
+                  <div className="flex justify-between items-center">
+                     <span className="text-[10px] font-bold uppercase opacity-50">{editingId ? 'Editing Category' : 'New Category'}</span>
+                     {editingId && <button onClick={handleCancelEdit} className="text-[10px] text-red-500 uppercase font-bold">Cancel Edit</button>}
+                  </div>
                   <input type="text" placeholder="Title" value={newSeries.title} onChange={e => setNewSeries({...newSeries, title: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none" />
                   <input type="text" placeholder="Desc" value={newSeries.description} onChange={e => setNewSeries({...newSeries, description: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none" />
-                  <button onClick={handleSaveSeries} className="w-full py-3 border font-black uppercase tracking-widest rounded-xl" style={{ borderColor: brandAccent, color: brandAccent }}>Save Category</button>
+                  <button onClick={handleSaveSeries} className="w-full py-3 border font-black uppercase tracking-widest rounded-xl" style={{ borderColor: brandAccent, color: brandAccent }}>
+                    {editingId ? 'Update Category' : 'Save Category'}
+                  </button>
                   <div className="pt-4 space-y-2">
                     {series.map(s => (
                       <div key={s.id} className="flex justify-between items-center p-4 bg-black/5 dark:bg-white/5 rounded-lg">
                         <span className="text-[14px] font-bold">{s.title}</span>
-                        <button onClick={async () => { if(window.confirm('Delete?')) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'series', s.id)); }} className="text-red-500 opacity-60 hover:opacity-100 p-1"><Trash2 size={16}/></button>
+                        <div className="flex items-center gap-4">
+                          <button onClick={() => handleEditSeries(s)} className="text-blue-500 opacity-60 hover:opacity-100 p-1"><Edit3 size={16}/></button>
+                          <button onClick={async () => { if(window.confirm('Delete?')) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'series', s.id)); }} className="text-red-500 opacity-60 hover:opacity-100 p-1"><Trash2 size={16}/></button>
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
               ) : (
                 <div className="space-y-4 max-w-md mx-auto">
+                  <div className="flex justify-between items-center">
+                     <span className="text-[10px] font-bold uppercase opacity-50">{editingId ? 'Editing Episode' : 'New Episode'}</span>
+                     {editingId && <button onClick={handleCancelEdit} className="text-[10px] text-red-500 uppercase font-bold">Cancel Edit</button>}
+                  </div>
                   <select value={newEp.seriesId} onChange={e => setNewEp({...newEp, seriesId: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none">
                     <option value="">Select Category...</option>
                     {series.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
@@ -508,12 +513,17 @@ export default function App() {
                   </div>
                   <input type="text" placeholder="Audio Path (audio/filename.mp3)" value={newEp.fileId} onChange={e => setNewEp({...newEp, fileId: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none" />
                   <textarea placeholder="Description" rows={4} value={newEp.content} onChange={e => setNewEp({...newEp, content: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none" />
-                  <button onClick={handleSaveEpisode} className="w-full py-4 text-white font-black uppercase tracking-widest rounded-xl" style={{ backgroundColor: brandAccent }}>Publish Episode</button>
+                  <button onClick={handleSaveEpisode} className="w-full py-4 text-white font-black uppercase tracking-widest rounded-xl" style={{ backgroundColor: brandAccent }}>
+                    {editingId ? 'Update Episode' : 'Publish Episode'}
+                  </button>
                   <div className="pt-4 space-y-2 pb-10">
                     {episodes.map(ep => (
                       <div key={ep.id} className="flex justify-between items-center p-4 bg-black/5 dark:bg-white/5 rounded-lg">
                         <span className="text-[12px] font-bold truncate max-w-[200px]">{ep.title}</span>
-                        <button onClick={async () => { if(window.confirm('Delete?')) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'episodes', ep.id)); }} className="text-red-500 opacity-60 hover:opacity-100 p-1"><Trash2 size={16}/></button>
+                        <div className="flex items-center gap-4">
+                          <button onClick={() => handleEditEpisode(ep)} className="text-blue-500 opacity-60 hover:opacity-100 p-1"><Edit3 size={16}/></button>
+                          <button onClick={async () => { if(window.confirm('Delete?')) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'episodes', ep.id)); }} className="text-red-500 opacity-60 hover:opacity-100 p-1"><Trash2 size={16}/></button>
+                        </div>
                       </div>
                     ))}
                   </div>
