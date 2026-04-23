@@ -16,6 +16,7 @@ import { getFirestore, collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc
  * THE DESIGN SYSTEM: ARCHITECTURAL SENSORY PORTAL
  * Update: Removed all dummy data for clean live push.
  * Update: Added Promise handlers to Audio play() to fix AbortError.
+ * Update: Header made absolute so the main player is perfectly centered vertically.
  */
 
 const firebaseConfig = {
@@ -336,8 +337,8 @@ export default function App() {
         <path d="M 0,0 L 100,0 L 100,100 L 0,100 Z" fill="none" stroke={brandAccent} strokeWidth="0.4" strokeDasharray="400" strokeDashoffset={400 - (progress * 4)} className="transition-all duration-300 ease-linear opacity-40" />
       </svg>
 
-      <div className="w-full h-full flex flex-col transition-all duration-700 z-10" onClick={() => menuOpen && setMenuOpen(false)}>
-        <header className={`w-full p-6 md:p-8 flex justify-between items-center z-40 transition-all duration-1000 ${isFocused ? 'opacity-0 -translate-y-4 pointer-events-none' : 'opacity-100'}`}>
+      <div className="w-full h-full flex flex-col transition-all duration-700 z-10 flex-grow" onClick={() => menuOpen && setMenuOpen(false)}>
+        <header className={`w-full p-6 md:p-8 flex justify-between items-center z-40 shrink-0 transition-all duration-1000 ${isFocused ? 'opacity-0 -translate-y-4 pointer-events-none' : 'opacity-100'}`}>
           <button onClick={(e) => { e.stopPropagation(); triggerHaptic(); setMenuOpen(true); setMenuView('series'); }} className="opacity-80 hover:opacity-100 hover:text-[var(--brand-accent)] transition-all p-2 font-black uppercase tracking-widest text-[12px]">Library</button>
           <div className="flex items-center gap-4 md:gap-6">
             <button onClick={(e) => { e.stopPropagation(); triggerHaptic(); setIsDarkMode(!isDarkMode); }} className="p-2 opacity-60 hover:opacity-100 transition-all">{isDarkMode ? <Sun size={20} /> : <Moon size={20} />}</button>
@@ -345,8 +346,7 @@ export default function App() {
           </div>
         </header>
 
-        {/* md:-mt-16 visually pulls the player up to center it perfectly on desktop */}
-        <main className="flex-grow flex flex-col items-center justify-center p-6 md:p-8 max-w-4xl mx-auto w-full relative z-10 pointer-events-none md:-mt-16">
+        <main className="flex-grow flex flex-col items-center justify-center p-6 md:p-8 max-w-4xl mx-auto w-full relative z-10 pointer-events-none">
           <div className={`w-full flex flex-col items-center transition-all duration-700 pointer-events-auto ${fxOpen || menuOpen || descOpen || adminOpen ? 'opacity-0 scale-95 blur-xl' : 'opacity-100 scale-100'}`}>
             <div className={`text-center mb-8 w-full max-w-lg transition-all duration-1000 ${isFocused ? 'opacity-0 translate-y-4 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
               <h1 className="text-4xl md:text-5xl tracking-tighter mb-4 uppercase leading-tight break-words" style={{ fontWeight: dynamicFontWeight, letterSpacing: `${-0.03 + (intensity * 0.05)}em` }}>{currentTrack ? currentTrack.title : "No Active Track"}</h1>
