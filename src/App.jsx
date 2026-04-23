@@ -14,7 +14,8 @@ import { getFirestore, collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc
 
 /**
  * THE DESIGN SYSTEM: ARCHITECTURAL SENSORY PORTAL
- * Update: Sensory Pulse (Haptics) default to OFF.
+ * Update: Removed all dummy data for clean live push.
+ * Update: Added Promise handlers to Audio play() to fix AbortError.
  */
 
 const firebaseConfig = {
@@ -96,6 +97,11 @@ export default function App() {
       if (type === 'subbass') navigator.vibrate(12);
     }
   };
+
+  // Sync entire document body to prevent "black down the middle" bug on desktop
+  useEffect(() => {
+    document.body.style.backgroundColor = isDarkMode ? '#000000' : '#e8e7e7';
+  }, [isDarkMode]);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -193,8 +199,23 @@ export default function App() {
     if (!currentTrack) return;
     initAudioEngine();
     if (audioContextRef.current?.state === 'suspended') await audioContextRef.current.resume();
-    if (isPlaying) audioRef.current.pause(); else audioRef.current.play();
-    setIsPlaying(!isPlaying);
+    
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      const playPromise = audioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          setIsPlaying(true);
+        }).catch(error => {
+          console.error("Playback prevented:", error);
+          setIsPlaying(false);
+        });
+      } else {
+        setIsPlaying(true);
+      }
+    }
   };
 
   const playEpisode = (ep) => {
@@ -202,7 +223,16 @@ export default function App() {
     const f = String(ep.fileId || '');
     audioRef.current.src = f.startsWith('http') ? f : `/${f}`;
     setCurrentTrack(ep); setIsPlaying(true); setProgress(0); setMenuOpen(false);
-    setTimeout(() => { if (audioContextRef.current?.state === 'suspended') audioContextRef.current.resume(); audioRef.current.play(); }, 100);
+    setTimeout(() => { 
+      if (audioContextRef.current?.state === 'suspended') audioContextRef.current.resume(); 
+      const playPromise = audioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(error => {
+          console.error("Playback prevented:", error);
+          setIsPlaying(false);
+        });
+      }
+    }, 100);
   };
 
   // MAIN RENDER LOOP (Visualizer + Haptics)
@@ -297,7 +327,7 @@ export default function App() {
   const dynamicFontWeight = Math.min(900, Math.max(100, 100 + Math.floor(intensity * 1200)));
 
   return (
-    <div className={`min-h-screen flex flex-col font-sans overflow-hidden relative transition-colors duration-1000 selection:bg-[var(--brand-accent)] selection:text-white ${isDarkMode ? 'bg-[#000000] text-[#e8e7e7]' : 'bg-[#e8e7e7] text-[#1a1a1a]'}`} style={{ backgroundColor: isFocused && isDarkMode ? `rgba(${15 + intensity * 40}, ${15 + intensity * 40}, ${15 + intensity * 40}, 1)` : undefined, '--brand-accent': brandAccent }}>
+    <div className={`min-h-screen w-full flex flex-col font-sans overflow-hidden relative transition-colors duration-1000 selection:bg-[var(--brand-accent)] selection:text-white ${isDarkMode ? 'bg-[#000000] text-[#e8e7e7]' : 'bg-[#e8e7e7] text-[#1a1a1a]'}`} style={{ backgroundColor: isFocused && isDarkMode ? `rgba(${15 + intensity * 40}, ${15 + intensity * 40}, ${15 + intensity * 40}, 1)` : undefined, '--brand-accent': brandAccent }}>
       
       <audio ref={audioRef} onEnded={() => setIsPlaying(false)} />
       
@@ -315,7 +345,8 @@ export default function App() {
           </div>
         </header>
 
-        <main className="flex-grow flex flex-col items-center justify-center p-6 md:p-8 max-w-4xl mx-auto w-full relative z-10 pointer-events-none">
+        {/* md:-mt-16 visually pulls the player up to center it perfectly on desktop */}
+        <main className="flex-grow flex flex-col items-center justify-center p-6 md:p-8 max-w-4xl mx-auto w-full relative z-10 pointer-events-none md:-mt-16">
           <div className={`w-full flex flex-col items-center transition-all duration-700 pointer-events-auto ${fxOpen || menuOpen || descOpen || adminOpen ? 'opacity-0 scale-95 blur-xl' : 'opacity-100 scale-100'}`}>
             <div className={`text-center mb-8 w-full max-w-lg transition-all duration-1000 ${isFocused ? 'opacity-0 translate-y-4 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
               <h1 className="text-4xl md:text-5xl tracking-tighter mb-4 uppercase leading-tight break-words" style={{ fontWeight: dynamicFontWeight, letterSpacing: `${-0.03 + (intensity * 0.05)}em` }}>{currentTrack ? currentTrack.title : "No Active Track"}</h1>
@@ -462,7 +493,7 @@ export default function App() {
           {!isAuthorized ? (
             <div className="max-w-xs w-full space-y-6 text-center" onClick={e => e.stopPropagation()}>
               <Lock size={20} className="mx-auto mb-6" style={{ color: brandAccent }} />
-              <input type="password" placeholder="****" value={adminPass} onChange={e => setAdminPass(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdminGate()} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none text-center border border-transparent focus:border-[var(--brand-accent)] text-[14px]" />
+              <input type="password" placeholder="****" value={adminPass} onChange={e => setAdminPass(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdminGate()} autoComplete="new-password" spellCheck="false" className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none text-center border border-transparent focus:border-[var(--brand-accent)] text-[14px]" />
               <button onClick={handleAdminGate} className="w-full py-4 text-white font-black uppercase tracking-widest rounded-xl" style={{ backgroundColor: brandAccent }}>Unlock</button>
             </div>
           ) : (
