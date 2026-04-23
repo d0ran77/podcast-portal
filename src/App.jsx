@@ -57,7 +57,6 @@ export default function App() {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [adminTab, setAdminTab] = useState('episodes');
   
-  // Edit State added here
   const [editingId, setEditingId] = useState(null);
   const [newSeries, setNewSeries] = useState({ title: '', description: '' });
   const [newEp, setNewEp] = useState({ title: '', duration: '', content: '', fileId: '', seriesId: '', season: '1' });
@@ -104,7 +103,7 @@ export default function App() {
         const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         const sorted = data.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
         setEpisodes(sorted);
-        if (!currentTrack && sorted.length > 0) setCurrentTrack(sorted[0]);
+        // Removed the auto-setting of currentTrack here so the Welcome screen shows properly
       }
     });
     return () => { unsubS(); unsubE(); };
@@ -152,6 +151,18 @@ export default function App() {
     triggerHaptic('light');
     if (!currentTrack) return;
     initAudioEngine();
+    
+    // Safety check to ensure source is valid before playing
+    if (!audioRef.current.src || audioRef.current.src.endsWith('/')) {
+      const f = String(currentTrack.fileId || '').trim();
+      if (!f) {
+        console.warn("No valid audio source found for this track.");
+        return;
+      }
+      audioRef.current.src = f.startsWith('http') ? f : (f.startsWith('/') ? f : `/${f}`);
+      audioRef.current.load();
+    }
+
     if (audioContextRef.current?.state === 'suspended') await audioContextRef.current.resume();
     
     if (isPlaying) {
@@ -169,9 +180,23 @@ export default function App() {
 
   const playEpisode = (ep) => {
     initAudioEngine();
-    const f = String(ep.fileId || '');
-    audioRef.current.src = f.startsWith('http') ? f : `/${f}`;
-    setCurrentTrack(ep); setIsPlaying(true); setProgress(0); setMenuOpen(false);
+    const f = String(ep?.fileId || '').trim();
+    
+    // Prevent execution if no fileId was provided, avoiding the 'no supported sources' error
+    if (!f) {
+      console.warn("Playback prevented: Episode has no audio file path attached.");
+      setIsPlaying(false);
+      return;
+    }
+
+    audioRef.current.src = f.startsWith('http') ? f : (f.startsWith('/') ? f : `/${f}`);
+    audioRef.current.load(); // Explicitly force the element to load the new source
+    
+    setCurrentTrack(ep); 
+    setIsPlaying(true); 
+    setProgress(0); 
+    setMenuOpen(false);
+    
     setTimeout(() => { 
       if (audioContextRef.current?.state === 'suspended') audioContextRef.current.resume(); 
       const playPromise = audioRef.current.play();
@@ -211,7 +236,8 @@ export default function App() {
       const w = canvas.width, h = canvas.height, mid = h / 2;
       let curIntensity = 0;
       
-      ctx.fillStyle = isDarkMode ? 'rgba(10, 10, 10, 0.3)' : 'rgba(232, 231, 231, 0.3)';
+      // FIX 1: Make the canvas background match the pure #000000 dark mode body
+      ctx.fillStyle = isDarkMode ? 'rgba(0, 0, 0, 0.3)' : 'rgba(232, 231, 231, 0.3)';
       ctx.fillRect(0, 0, w, h);
       
       if (isPlaying && analyzerRef.current) {
@@ -278,7 +304,6 @@ export default function App() {
     else alert("Invalid Access Code");
   };
 
-  // The actual functions for editing:
   const handleEditSeries = (s) => { 
     setEditingId(s.id); 
     setNewSeries({ title: s.title, description: s.description || '' }); 
@@ -292,7 +317,6 @@ export default function App() {
     });
   };
 
-  // Cancels the edit and resets the form
   const handleCancelEdit = () => {
     setEditingId(null);
     setNewSeries({ title: '', description: '' });
@@ -327,10 +351,20 @@ export default function App() {
     if (eps && eps.length > 0) playEpisode(eps[0]);
   };
 
+  // Filter episodes dynamically for the admin panel based on the selected category
+  const adminDisplayedEpisodes = episodes.filter(ep => newEp.seriesId ? ep.seriesId === newEp.seriesId : true);
+
   return (
     <div className={`min-h-screen w-full flex flex-col font-sans overflow-hidden relative transition-colors duration-1000 selection:bg-[var(--brand-accent)] selection:text-white ${isDarkMode ? 'bg-[#000000] text-[#e8e7e7]' : 'bg-[#e8e7e7] text-[#1a1a1a]'}`} style={{ '--brand-accent': brandAccent }}>
       
-      <audio ref={audioRef} onEnded={handleTrackEnd} />
+      <audio 
+        ref={audioRef} 
+        onEnded={handleTrackEnd} 
+        onError={(e) => {
+          console.error("Audio Load Error: The element has no supported sources or file could not be found.", e);
+          setIsPlaying(false);
+        }}
+      />
       
       <svg className="fixed inset-0 w-full h-full pointer-events-none z-[100]" preserveAspectRatio="none" viewBox="0 0 100 100">
         <path d="M 0,0 L 100,0 L 100,100 L 0,100 Z" fill="none" stroke={brandAccent} strokeWidth="0.4" strokeDasharray="400" strokeDashoffset={400 - (progress * 4)} className="transition-all duration-300 ease-linear opacity-40" />
@@ -349,21 +383,34 @@ export default function App() {
           <div className={`w-full flex flex-col items-center transition-all duration-700 pointer-events-auto ${fxOpen || menuOpen || descOpen || adminOpen ? 'opacity-0 scale-95 blur-xl' : 'opacity-100 scale-100'}`}>
             <div className={`text-center mb-8 w-full max-w-lg transition-all duration-1000 ${isFocused ? 'opacity-0 translate-y-4 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
               <h1 className="text-4xl md:text-5xl font-black tracking-tighter mb-4 uppercase leading-tight break-words">
-                {currentTrack ? currentTrack.title : "No Active Track"}
+                {currentTrack ? currentTrack.title : "Talk With Liam"}
               </h1>
-              <p className="text-[12px] font-bold uppercase tracking-[0.4em] opacity-70 mt-2">Talk With Liam: Sessions</p>
+              <p className="text-[12px] font-bold uppercase tracking-[0.4em] opacity-70 mt-2">
+                {currentTrack ? "Talk With Liam: Sessions" : "Select a session from the library to begin"}
+              </p>
             </div>
-            <button onClick={() => setDescOpen(true)} className={`group flex items-center gap-3 mb-10 transition-all duration-1000 ${isFocused ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-              <span className="text-[12px] font-black uppercase tracking-[0.5em] opacity-80 hover:opacity-100" style={{ color: brandAccent }}>Episode Description</span>
-            </button>
             
-            <canvas ref={canvasRef} width="1200" height="500" className={`w-full transition-all duration-1000 ease-in-out ${isFocused ? 'h-48 md:h-[45vh] opacity-100' : 'h-32 md:h-56 opacity-90'} mb-12`} />
+            {currentTrack && (
+              <button onClick={() => setDescOpen(true)} className={`group flex items-center gap-3 mb-10 transition-all duration-1000 ${isFocused ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                <span className="text-[12px] font-black uppercase tracking-[0.5em] opacity-80 hover:opacity-100" style={{ color: brandAccent }}>Episode Description</span>
+              </button>
+            )}
+            
+            <canvas ref={canvasRef} width="1200" height="500" className={`w-full transition-all duration-1000 ease-in-out ${isFocused ? 'h-48 md:h-[45vh] opacity-100' : 'h-32 md:h-56 opacity-90'} ${currentTrack ? 'mb-12' : 'mb-16'}`} />
             
             <div className={`w-full flex flex-col items-center gap-10 transition-all duration-1000 ${isFocused ? 'opacity-0 translate-y-4 pointer-events-none' : 'opacity-100'}`}>
               <div className="flex items-center gap-8">
-                <button onClick={() => { audioRef.current.currentTime -= 15; }} className="opacity-40 hover:opacity-100"><RotateCcw size={22} /></button>
-                <button onClick={togglePlay} className={`w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center shadow-2xl transition-transform hover:scale-105 active:scale-95 ${isDarkMode ? 'bg-[#e8e7e7] text-[#0a0a0a]' : 'bg-[#1a1a1a] text-[#e8e7e7]'}`}>{isPlaying ? <Pause size={28} fill="currentColor" /> : <Play size={28} fill="currentColor" className="ml-1" />}</button>
-                <button onClick={() => { audioRef.current.currentTime += 15; }} className="opacity-40 hover:opacity-100"><RotateCw size={22} /></button>
+                {currentTrack ? (
+                  <>
+                    <button onClick={() => { audioRef.current.currentTime -= 15; }} className="opacity-40 hover:opacity-100"><RotateCcw size={22} /></button>
+                    <button onClick={togglePlay} className={`w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center shadow-2xl transition-transform hover:scale-105 active:scale-95 ${isDarkMode ? 'bg-[#e8e7e7] text-[#0a0a0a]' : 'bg-[#1a1a1a] text-[#e8e7e7]'}`}>{isPlaying ? <Pause size={28} fill="currentColor" /> : <Play size={28} fill="currentColor" className="ml-1" />}</button>
+                    <button onClick={() => { audioRef.current.currentTime += 15; }} className="opacity-40 hover:opacity-100"><RotateCw size={22} /></button>
+                  </>
+                ) : (
+                  <button onClick={(e) => { e.stopPropagation(); triggerHaptic(); setMenuOpen(true); setMenuView('series'); }} className={`px-8 py-4 rounded-full font-black uppercase tracking-widest text-[12px] shadow-xl transition-transform hover:scale-105 active:scale-95 ${isDarkMode ? 'bg-[#e8e7e7] text-[#0a0a0a]' : 'bg-[#1a1a1a] text-[#e8e7e7]'}`}>
+                    Open Library
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -404,6 +451,16 @@ export default function App() {
                 <div className="flex items-center gap-3"><Waves size={16}/><span className="text-[13px] font-bold">Tactile Resonance</span></div>
                 <div className={`w-2 h-2 rounded-full ${hapticSubBass ? 'bg-[var(--brand-accent)]' : 'bg-current opacity-20'}`}/>
               </div>
+            </div>
+            {/* FIX 2: Restored the missing Audio Profiles section */}
+            <div>
+              <span className="text-[12px] font-black uppercase tracking-widest opacity-40 mb-4 block">Audio Profiles</span>
+              {['studio', 'midnight', 'vivid', 'spatial'].map(p => (
+                <div key={p} onClick={() => setActivePreset(p)} className="py-4 border-b border-current/5 cursor-pointer flex justify-between items-center capitalize">
+                  <span className={`text-[13px] font-bold ${activePreset === p ? 'text-[var(--brand-accent)]' : ''}`}>{p}</span>
+                  {activePreset === p && <div className="w-2 h-2 rounded-full bg-[var(--brand-accent)]"/>}
+                </div>
+              ))}
             </div>
           </div>
           <button onClick={() => setFxOpen(false)} className="mt-auto py-6 text-[12px] font-black uppercase tracking-[0.5em] opacity-80 hover:text-[var(--brand-accent)] border-t border-white/10">Close Specs</button>
@@ -503,7 +560,7 @@ export default function App() {
                      {editingId && <button onClick={handleCancelEdit} className="text-[10px] text-red-500 uppercase font-bold">Cancel Edit</button>}
                   </div>
                   <select value={newEp.seriesId} onChange={e => setNewEp({...newEp, seriesId: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none">
-                    <option value="">Select Category...</option>
+                    <option value="">All Categories (Select to filter below)...</option>
                     {series.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
                   </select>
                   <input type="text" placeholder="Title" value={newEp.title} onChange={e => setNewEp({...newEp, title: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none" />
@@ -517,7 +574,10 @@ export default function App() {
                     {editingId ? 'Update Episode' : 'Publish Episode'}
                   </button>
                   <div className="pt-4 space-y-2 pb-10">
-                    {episodes.map(ep => (
+                    <div className="flex justify-between items-center mb-2 px-1">
+                      <span className="text-[10px] font-bold uppercase opacity-50">{newEp.seriesId ? 'Episodes in Selected Category' : 'All Episodes'}</span>
+                    </div>
+                    {adminDisplayedEpisodes.map(ep => (
                       <div key={ep.id} className="flex justify-between items-center p-4 bg-black/5 dark:bg-white/5 rounded-lg">
                         <span className="text-[12px] font-bold truncate max-w-[200px]">{ep.title}</span>
                         <div className="flex items-center gap-4">
@@ -526,6 +586,9 @@ export default function App() {
                         </div>
                       </div>
                     ))}
+                    {adminDisplayedEpisodes.length === 0 && (
+                      <p className="text-center text-[12px] opacity-40 py-4">No episodes found.</p>
+                    )}
                   </div>
                 </div>
               )}
