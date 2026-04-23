@@ -1,0 +1,23 @@
+{
+  "short_name": "TWL Sessions",
+  "name": "Talk With Liam: Sessions",
+  "icons": [
+    {
+      "src": "/twlsquare192.jpeg",
+      "type": "image/jpeg",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/twlsquare512.jpeg",
+      "type": "image/jpeg",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0a0a0a",
+  "display": "standalone",
+  "theme_color": "#f28d35",
+  "description": "An architectural sensory portal for psychological exploration and therapeutic audio."
+}

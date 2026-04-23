@@ -2,24 +2,28 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Talk With Liam | Podcast Portal</title>
-    <!-- We use the Noto Sans font for that high-end editorial feel -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-      /* Prevent the "Flash of White" during loading in Dark Mode */
-      body {
-        background-color: #e8e7e7;
-        margin: 0;
-        padding: 0;
-      }
-      .dark body {
-        background-color: #0a0a0a;
-      }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    
+    <!-- The Actual Name of the Page -->
+    <title>Talk With Liam: Sessions</title>
+    
+    <!-- PWA Manifest & App Icons for Phone Installation -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <link rel="apple-touch-icon" href="/twlsquare192.jpeg" />
+
+    <!-- Social Share (Open Graph) Meta Tags -->
+    <meta property="og:title" content="Talk With Liam: Sessions" />
+    <meta property="og:description" content="An architectural sensory portal for psychological exploration and therapeutic audio." />
+    <meta property="og:image" content="https://podcastld.web.app/twlland.jpeg" />
+    <meta property="og:url" content="https://podcastld.web.app" />
+    <meta property="og:type" content="website" />
+    
+    <!-- Twitter / X Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Talk With Liam: Sessions" />
+    <meta name="twitter:description" content="An architectural sensory portal for psychological exploration and therapeutic audio." />
+    <meta name="twitter:image" content="https://podcastld.web.app/twlland.jpeg" />
   </head>
   <body>
     <div id="root"></div>

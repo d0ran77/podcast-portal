@@ -14,9 +14,10 @@ import { getFirestore, collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc
 
 /**
  * THE DESIGN SYSTEM: ARCHITECTURAL SENSORY PORTAL
- * Update: Removed all dummy data for clean live push.
- * Update: Added Promise handlers to Audio play() to fix AbortError.
- * Update: Header made absolute so the main player is perfectly centered vertically.
+ * Update: Removed dynamic typography scaling to prevent glitching.
+ * Update: Increased Canvas sizing for Desktop displays + expanded Monastic Mode scale.
+ * Update: Added "Play All" logic for sections (auto-advance track to track).
+ * Update: Added Sort Order toggle (1 to 10 vs Newest).
  */
 
 const firebaseConfig = {
@@ -32,18 +33,6 @@ const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 const portalAppId = 'podcastld77-portal'; 
-
-const generateWaveform = (seedRaw) => {
-  const seedStr = String(seedRaw || 'default');
-  let seed = 0;
-  for (let i = 0; i < seedStr.length; i++) seed += seedStr.charCodeAt(i);
-  const bars = [];
-  for (let i = 0; i < 80; i++) {
-    const height = Math.abs(Math.sin(i * 0.2 + seed) * 40 + Math.sin(i * 0.05 + seed * 2) * 50) + 15;
-    bars.push(Math.min(100, height));
-  }
-  return bars;
-};
 
 const currentHour = new Date().getHours();
 const isNightTime = currentHour < 7 || currentHour >= 18;
@@ -62,13 +51,13 @@ export default function App() {
   const [menuView, setMenuView] = useState('series'); 
   const [selectedSeriesId, setSelectedSeriesId] = useState(null);
   const [expandedSeason, setExpandedSeason] = useState('1'); 
+  const [sortOrder, setSortOrder] = useState('asc'); // asc = 1 to 10 (Oldest to Newest)
   
   const [intensity, setIntensity] = useState(0); 
   const [isDarkMode, setIsDarkMode] = useState(isNightTime);
   const [activePreset, setActivePreset] = useState(isNightTime ? 'midnight' : 'studio');
   const [isFocused, setIsFocused] = useState(false); 
   
-  // SENSORY DEFAULTS SET TO OFF
   const [hapticHeartbeat, setHapticHeartbeat] = useState(false); 
   const [hapticSubBass, setHapticSubBass] = useState(false); 
 
@@ -99,7 +88,6 @@ export default function App() {
     }
   };
 
-  // Sync entire document body to prevent "black down the middle" bug on desktop
   useEffect(() => {
     document.body.style.backgroundColor = isDarkMode ? '#000000' : '#e8e7e7';
   }, [isDarkMode]);
@@ -124,7 +112,8 @@ export default function App() {
     const unsubE = onSnapshot(eCol, (snap) => {
       if (!snap.empty) {
         const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        const sorted = data.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        // Default base load is oldest first so 1 to 10 plays correctly in sequence
+        const sorted = data.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
         setEpisodes(sorted);
         if (!currentTrack && sorted.length > 0) setCurrentTrack(sorted[0]);
       }
@@ -132,13 +121,11 @@ export default function App() {
     return () => { unsubS(); unsubE(); };
   }, [user]);
 
-  // HARDENED IDLE ENGINE (MONASTIC MODE)
   useEffect(() => {
     const handleActivity = () => { 
       lastActive.current = Date.now(); 
       setIsFocused(false); 
     };
-    
     const events = ['touchstart', 'touchmove', 'mousemove', 'click', 'keydown'];
     events.forEach(e => window.addEventListener(e, handleActivity, { passive: true }));
     
@@ -196,7 +183,7 @@ export default function App() {
   }, [activePreset]);
 
   const togglePlay = async () => {
-    triggerHaptic('light'); // Just a light tap for the button press
+    triggerHaptic('light');
     if (!currentTrack) return;
     initAudioEngine();
     if (audioContextRef.current?.state === 'suspended') await audioContextRef.current.resume();
@@ -207,15 +194,10 @@ export default function App() {
     } else {
       const playPromise = audioRef.current.play();
       if (playPromise !== undefined) {
-        playPromise.then(() => {
-          setIsPlaying(true);
-        }).catch(error => {
-          console.error("Playback prevented:", error);
-          setIsPlaying(false);
+        playPromise.then(() => setIsPlaying(true)).catch(error => {
+          console.error("Playback prevented:", error); setIsPlaying(false);
         });
-      } else {
-        setIsPlaying(true);
-      }
+      } else setIsPlaying(true);
     }
   };
 
@@ -229,8 +211,7 @@ export default function App() {
       const playPromise = audioRef.current.play();
       if (playPromise !== undefined) {
         playPromise.catch(error => {
-          console.error("Playback prevented:", error);
-          setIsPlaying(false);
+          console.error("Playback prevented:", error); setIsPlaying(false);
         });
       }
     }, 100);
@@ -243,13 +224,22 @@ export default function App() {
     const render = () => {
       animationId = requestAnimationFrame(render);
       if (!canvasRef.current) return;
-      const ctx = canvasRef.current.getContext('2d');
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width, h = canvas.height, mid = h / 2;
       let curIntensity = 0;
+      
+      // Apply motion blur effect instead of a hard clear
+      ctx.fillStyle = isDarkMode ? 'rgba(10, 10, 10, 0.3)' : 'rgba(232, 231, 231, 0.3)';
+      ctx.fillRect(0, 0, w, h);
       
       if (isPlaying && analyzerRef.current) {
         const dataArray = new Uint8Array(analyzerRef.current.frequencyBinCount);
         analyzerRef.current.getByteFrequencyData(dataArray);
-        curIntensity = (dataArray.reduce((a,b)=>a+b)/dataArray.length)/255;
+        
+        // Calculate overall intensity for the background pulse
+        let sum = 0; for(let i=0; i<dataArray.length; i++) sum += dataArray[i];
+        curIntensity = (sum / dataArray.length) / 255;
 
         if (hapticSubBass) {
           let bass = 0; for(let i=0; i<5; i++) bass += dataArray[i];
@@ -259,28 +249,54 @@ export default function App() {
         if (curIntensity < 0.03) {
           silenceFrames++; 
           if (hapticHeartbeat && silenceFrames > 210) { 
-            triggerHaptic('heartbeat'); 
-            silenceFrames = 0; 
+            triggerHaptic('heartbeat'); silenceFrames = 0; 
           }
         } else silenceFrames = 0;
-      } else if (!isPlaying && currentTrack) {
-        curIntensity = 0.02 + Math.sin(Date.now() / 1000) * 0.01;
+        
+        // Draw the True Frequency Spectrum
+        ctx.beginPath();
+        ctx.lineWidth = 1.5 + (curIntensity * 12);
+        ctx.strokeStyle = brandAccent;
+        ctx.lineCap = 'round'; 
+        ctx.lineJoin = 'round';
+        ctx.moveTo(0, mid);
+        
+        // Focus on vocal/mid frequencies (first ~40% of bins)
+        const limit = Math.floor(dataArray.length / 2.5); 
+        const slices = w / limit;
+        let x = 0;
+        
+        for (let i = 0; i < limit; i++) {
+          const amp = dataArray[i] / 255;
+          // Creates a smooth envelope so the edges of the wave taper to 0
+          const pin = Math.sin((i / limit) * Math.PI);
+          const y = mid + (i % 2 === 0 ? 1 : -1) * (amp * h * 0.45) * pin;
+          ctx.lineTo(x, y); 
+          x += slices;
+        }
+        ctx.lineTo(w, mid);
+        ctx.stroke();
+
+      } else {
+        // Idle liquid wave when paused
+        if (currentTrack) curIntensity = 0.02 + Math.sin(Date.now() / 1000) * 0.01;
+        
+        ctx.beginPath(); 
+        ctx.lineWidth = 1.5 + (curIntensity * 10); 
+        ctx.strokeStyle = brandAccent;
+        ctx.moveTo(0, mid);
+        for (let i = 0; i < 80; i++) {
+          const y = mid + (i % 2 === 0 ? 1 : -1) * (curIntensity * h * 0.4) * Math.sin((i / 80) * Math.PI);
+          ctx.lineTo((w / 80) * i, y);
+        }
+        ctx.lineTo(w, mid); ctx.stroke();
       }
       
       setIntensity(curIntensity);
-      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-      const w = canvasRef.current.width, h = canvasRef.current.height, mid = h / 2;
-      ctx.beginPath(); ctx.lineWidth = 1.5 + (curIntensity * 14); ctx.strokeStyle = brandAccent;
-      ctx.moveTo(0, mid);
-      for (let i = 0; i < 80; i++) {
-        const y = mid + (i % 2 === 0 ? 1 : -1) * (curIntensity * h * 0.4) * Math.sin((i / 80) * Math.PI);
-        ctx.lineTo((w / 80) * i, y);
-      }
-      ctx.lineTo(w, mid); ctx.stroke();
     };
     render();
     return () => cancelAnimationFrame(animationId);
-  }, [isPlaying, currentTrack, hapticSubBass, hapticHeartbeat, brandAccent]);
+  }, [isPlaying, currentTrack, hapticSubBass, hapticHeartbeat, brandAccent, isDarkMode]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -320,17 +336,43 @@ export default function App() {
   };
 
   const currentSeries = series.find(s => s.id === selectedSeriesId);
-  const seriesEpisodes = episodes.filter(ep => ep.seriesId === selectedSeriesId);
+  const seriesEpisodes = episodes.filter(ep => ep.seriesId === selectedSeriesId).sort((a, b) => {
+    return sortOrder === 'asc' ? (a.timestamp || 0) - (b.timestamp || 0) : (b.timestamp || 0) - (a.timestamp || 0);
+  });
   const episodesBySeason = seriesEpisodes.reduce((acc, ep) => {
     const s = ep.season || '1'; if (!acc[s]) acc[s] = []; acc[s].push(ep); return acc;
   }, {});
+
+  const handlePlaySection = (seasonNum) => {
+    const eps = episodesBySeason[seasonNum];
+    if (eps && eps.length > 0) {
+      playEpisode(eps[0]);
+    }
+  };
+
+  const handleTrackEnd = () => {
+    if (!currentTrack) {
+      setIsPlaying(false);
+      return;
+    }
+    const currentSeriesEps = episodes.filter(e => e.seriesId === currentTrack.seriesId);
+    const sortedEps = currentSeriesEps.sort((a, b) => sortOrder === 'asc' ? (a.timestamp || 0) - (b.timestamp || 0) : (b.timestamp || 0) - (a.timestamp || 0));
+    const currentSeasonEps = sortedEps.filter(e => (e.season || '1') === (currentTrack.season || '1'));
+    
+    const idx = currentSeasonEps.findIndex(e => e.id === currentTrack.id);
+    if (idx >= 0 && idx < currentSeasonEps.length - 1) {
+      playEpisode(currentSeasonEps[idx + 1]);
+    } else {
+      setIsPlaying(false);
+    }
+  };
 
   const dynamicFontWeight = Math.min(900, Math.max(100, 100 + Math.floor(intensity * 1200)));
 
   return (
     <div className={`min-h-screen w-full flex flex-col font-sans overflow-hidden relative transition-colors duration-1000 selection:bg-[var(--brand-accent)] selection:text-white ${isDarkMode ? 'bg-[#000000] text-[#e8e7e7]' : 'bg-[#e8e7e7] text-[#1a1a1a]'}`} style={{ backgroundColor: isFocused && isDarkMode ? `rgba(${15 + intensity * 40}, ${15 + intensity * 40}, ${15 + intensity * 40}, 1)` : undefined, '--brand-accent': brandAccent }}>
       
-      <audio ref={audioRef} onEnded={() => setIsPlaying(false)} />
+      <audio ref={audioRef} onEnded={handleTrackEnd} />
       
       {/* PROGRESS TRACKER */}
       <svg className="fixed inset-0 w-full h-full pointer-events-none z-[100]" preserveAspectRatio="none" viewBox="0 0 100 100">
@@ -338,7 +380,7 @@ export default function App() {
       </svg>
 
       <div className="w-full h-full flex flex-col transition-all duration-700 z-10 flex-grow" onClick={() => menuOpen && setMenuOpen(false)}>
-        <header className={`w-full p-6 md:p-8 flex justify-between items-center z-40 shrink-0 transition-all duration-1000 ${isFocused ? 'opacity-0 -translate-y-4 pointer-events-none' : 'opacity-100'}`}>
+        <header className={`absolute top-0 left-0 w-full p-6 md:p-8 flex justify-between items-center z-40 shrink-0 transition-all duration-1000 ${isFocused ? 'opacity-0 -translate-y-4 pointer-events-none' : 'opacity-100'}`}>
           <button onClick={(e) => { e.stopPropagation(); triggerHaptic(); setMenuOpen(true); setMenuView('series'); }} className="opacity-80 hover:opacity-100 hover:text-[var(--brand-accent)] transition-all p-2 font-black uppercase tracking-widest text-[12px]">Library</button>
           <div className="flex items-center gap-4 md:gap-6">
             <button onClick={(e) => { e.stopPropagation(); triggerHaptic(); setIsDarkMode(!isDarkMode); }} className="p-2 opacity-60 hover:opacity-100 transition-all">{isDarkMode ? <Sun size={20} /> : <Moon size={20} />}</button>
@@ -346,14 +388,22 @@ export default function App() {
           </div>
         </header>
 
-        <main className="flex-grow flex flex-col items-center justify-center p-6 md:p-8 max-w-4xl mx-auto w-full relative z-10 pointer-events-none">
+        {/* md:-mt-16 visually pulls the player up to center it perfectly on desktop */}
+        <main className="flex-grow flex flex-col items-center justify-center p-6 md:p-8 max-w-4xl mx-auto w-full relative z-10 pointer-events-none md:-mt-16">
           <div className={`w-full flex flex-col items-center transition-all duration-700 pointer-events-auto ${fxOpen || menuOpen || descOpen || adminOpen ? 'opacity-0 scale-95 blur-xl' : 'opacity-100 scale-100'}`}>
             <div className={`text-center mb-8 w-full max-w-lg transition-all duration-1000 ${isFocused ? 'opacity-0 translate-y-4 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
-              <h1 className="text-4xl md:text-5xl tracking-tighter mb-4 uppercase leading-tight break-words" style={{ fontWeight: dynamicFontWeight, letterSpacing: `${-0.03 + (intensity * 0.05)}em` }}>{currentTrack ? currentTrack.title : "No Active Track"}</h1>
+              <h1 className="text-4xl md:text-5xl font-black tracking-tighter mb-4 uppercase leading-tight break-words">
+                {currentTrack ? currentTrack.title : "No Active Track"}
+              </h1>
               <p className="text-[12px] font-bold uppercase tracking-[0.4em] opacity-70 mt-2">Psychotherapy & Reflection</p>
             </div>
-            <button onClick={() => setDescOpen(true)} className={`group flex items-center gap-3 mb-10 transition-all duration-1000 ${isFocused ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}><span className="text-[12px] font-black uppercase tracking-[0.5em] opacity-80 hover:opacity-100" style={{ color: brandAccent }}>Episode Description</span></button>
-            <canvas ref={canvasRef} width="1200" height="300" className="w-full h-32 md:h-40 mb-12" />
+            <button onClick={() => setDescOpen(true)} className={`group flex items-center gap-3 mb-10 transition-all duration-1000 ${isFocused ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+              <span className="text-[12px] font-black uppercase tracking-[0.5em] opacity-80 hover:opacity-100" style={{ color: brandAccent }}>Episode Description</span>
+            </button>
+            
+            {/* EXPANDED CANVAS FOR DESKTOP / MONASTIC MODE */}
+            <canvas ref={canvasRef} width="1200" height="500" className={`w-full transition-all duration-1000 ease-in-out ${isFocused ? 'h-48 md:h-[45vh] opacity-100' : 'h-32 md:h-56 opacity-90'} mb-12`} />
+            
             <div className={`w-full flex flex-col items-center gap-10 transition-all duration-1000 ${isFocused ? 'opacity-0 translate-y-4 pointer-events-none' : 'opacity-100'}`}>
               <div className="flex items-center gap-8">
                 <button onClick={() => { audioRef.current.currentTime -= 15; }} className="opacity-40 hover:opacity-100"><RotateCcw size={22} /></button>
@@ -383,7 +433,7 @@ export default function App() {
                 <p className="text-[14px] opacity-40 italic text-center">No structural description available for this session.</p>
               )}
             </div>
-            <a href="https://share.google/gYraySbO0BsSwCmd4" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 group opacity-60 hover:opacity-100 transition-all justify-center">
+            <a href="https://talkwithliam.co.uk/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 group opacity-60 hover:opacity-100 transition-all justify-center">
                 <HeartPulse size={14} className="group-hover:text-[var(--brand-accent)]" />
                 <span className="text-[12px] font-black uppercase tracking-widest group-hover:text-[var(--brand-accent)]">My Practice: Talk With Liam</span>
             </a>
@@ -455,10 +505,25 @@ export default function App() {
             {menuView === 'episodes' && (
               <div className="space-y-6">
                 <button onClick={() => setMenuView('series')} className="flex items-center gap-2 text-[12px] font-black uppercase opacity-80 hover:opacity-100 hover:text-[var(--brand-accent)]"><ArrowLeft size={12}/> Back</button>
-                <h3 className="text-[18px] font-black tracking-tight uppercase">{currentSeries?.title}</h3>
+                
+                <div className="mb-6 flex flex-col items-start gap-2">
+                  <h3 className="text-[18px] font-black tracking-tight uppercase leading-tight">{currentSeries?.title}</h3>
+                  <button onClick={() => setSortOrder(s => s === 'asc' ? 'desc' : 'asc')} className="text-[9px] font-black uppercase tracking-widest opacity-60 hover:opacity-100 hover:text-[var(--brand-accent)] transition-all">
+                    {sortOrder === 'asc' ? 'Order: 1 to 10' : 'Order: Newest'}
+                  </button>
+                </div>
+
                 {Object.keys(episodesBySeason).sort().map(seasonNum => (
                   <div key={seasonNum} className="space-y-2">
-                    <button onClick={() => setExpandedSeason(expandedSeason === seasonNum ? null : seasonNum)} className="flex items-center gap-3 py-2 opacity-80 hover:opacity-100"><span className="text-[12px] font-black uppercase tracking-widest">Section {seasonNum}</span></button>
+                    <div className="flex items-center justify-between py-2 border-b border-transparent hover:border-current/10 transition-colors">
+                      <button onClick={() => setExpandedSeason(expandedSeason === seasonNum ? null : seasonNum)} className="flex items-center gap-3 opacity-80 hover:opacity-100">
+                        <span className="text-[12px] font-black uppercase tracking-widest">Season {seasonNum}</span>
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); handlePlaySection(seasonNum); }} className="text-[9px] font-black uppercase tracking-widest opacity-60 hover:opacity-100 hover:text-[var(--brand-accent)] transition-all">
+                        Play All
+                      </button>
+                    </div>
+                    
                     <div className={`space-y-1 overflow-hidden transition-all duration-500 ${expandedSeason === seasonNum ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'}`}>
                       {episodesBySeason[seasonNum].map(ep => {
                         const isNew = Date.now() - (ep.timestamp || 0) < 604800000;
@@ -479,7 +544,7 @@ export default function App() {
             )}
           </div>
           <div className={`mt-auto pt-6 flex flex-wrap items-center gap-4 border-t ${isDarkMode ? 'border-white/10' : 'border-black/10'}`}>
-            <a href="https://share.google/gYraySbO0BsSwCmd4" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-all"><HeartPulse size={12}/><span className="text-[11px] font-black uppercase tracking-widest">Practice</span></a>
+            <a href="https://talkwithliam.co.uk/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-all"><HeartPulse size={12}/><span className="text-[11px] font-black uppercase tracking-widest">Practice</span></a>
             <a href="https://share.google/67Y6tixM6IhnO4jRU" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-all"><Code2 size={12}/><span className="text-[11px] font-black uppercase tracking-widest">Dev</span></a>
             <button onClick={() => { setAdminOpen(true); setMenuOpen(false); }} className="flex items-center gap-1.5 opacity-60 hover:opacity-100 ml-auto"><Shield size={12}/><span className="text-[11px] font-black uppercase tracking-widest">Admin</span></button>
           </div>
