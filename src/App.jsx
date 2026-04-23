@@ -5,7 +5,7 @@ import {
   ArrowLeft, Volume2, Sparkles, 
   Mic2, Moon, Sun, Tv, HeartPulse, Code2,
   Plus, Trash2, Shield, Lock, FolderPlus,
-  Activity, Waves, Edit3
+  Activity, Edit3
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
@@ -51,7 +51,6 @@ export default function App() {
   const [isFocused, setIsFocused] = useState(false); 
   
   const [hapticHeartbeat, setHapticHeartbeat] = useState(false); 
-  const [hapticSubBass, setHapticSubBass] = useState(false); 
 
   const [adminPass, setAdminPass] = useState("");
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -73,7 +72,6 @@ export default function App() {
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
       if (type === 'light') navigator.vibrate(10);
       if (type === 'heartbeat') navigator.vibrate([20, 50, 15]);
-      if (type === 'subbass') navigator.vibrate(12);
     }
   };
 
@@ -247,11 +245,6 @@ export default function App() {
         let sum = 0; for(let i=0; i<dataArray.length; i++) sum += dataArray[i];
         curIntensity = (sum / dataArray.length) / 255;
 
-        if (hapticSubBass) {
-          let bass = 0; for(let i=0; i<5; i++) bass += dataArray[i];
-          if ((bass/5)/255 > 0.6) triggerHaptic('subbass');
-        }
-
         if (curIntensity < 0.03) {
           silenceFrames++; 
           if (hapticHeartbeat && silenceFrames > 210) { 
@@ -290,7 +283,7 @@ export default function App() {
     };
     render();
     return () => cancelAnimationFrame(animationId);
-  }, [isPlaying, currentTrack, hapticSubBass, hapticHeartbeat, brandAccent, isDarkMode]);
+  }, [isPlaying, currentTrack, hapticHeartbeat, brandAccent, isDarkMode]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -446,10 +439,6 @@ export default function App() {
               <div onClick={() => setHapticHeartbeat(!hapticHeartbeat)} className="py-4 border-b border-current/5 cursor-pointer flex justify-between items-center">
                 <div className="flex items-center gap-3"><Activity size={16}/><span className="text-[13px] font-bold">Sensory Pulse</span></div>
                 <div className={`w-2 h-2 rounded-full ${hapticHeartbeat ? 'bg-[var(--brand-accent)]' : 'bg-current opacity-20'}`}/>
-              </div>
-              <div onClick={() => setHapticSubBass(!hapticSubBass)} className="py-4 border-b border-current/5 cursor-pointer flex justify-between items-center">
-                <div className="flex items-center gap-3"><Waves size={16}/><span className="text-[13px] font-bold">Tactile Resonance</span></div>
-                <div className={`w-2 h-2 rounded-full ${hapticSubBass ? 'bg-[var(--brand-accent)]' : 'bg-current opacity-20'}`}/>
               </div>
             </div>
             {/* FIX 2: Restored the missing Audio Profiles section */}
