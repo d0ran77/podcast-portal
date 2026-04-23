@@ -5,34 +5,34 @@ import {
   ArrowLeft, Volume2, Sparkles, 
   Mic2, Moon, Sun, Tv, HeartPulse, Code2,
   Plus, Trash2, Shield, Lock, FolderPlus,
-  ChevronDown, ChevronUp, PlayCircle, Activity,
-  Waves, Edit3
+  Activity, Waves, Edit3
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc, query, orderBy } from 'firebase/firestore';
+import { getFirestore, collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 
 /**
- * THE DESIGN SYSTEM: ARCHITECTURAL SENSORY PORTAL
- * Update: Removed dynamic typography scaling to prevent glitching.
- * Update: Increased Canvas sizing for Desktop displays + expanded Monastic Mode scale.
- * Update: Added "Play All" logic for sections (auto-advance track to track).
- * Update: Added Sort Order toggle (1 to 10 vs Newest).
+ * PROJECT: TALK WITH LIAM: SESSIONS
+ * PROJECT ID: podcastld77
+ * FIXED: handleTrackEnd ReferenceError
+ * FIXED: Layout Centering (Vertical and Horizontal)
+ * FIXED: High-Fidelity Visualizer with motion blur
  */
 
 const firebaseConfig = {
-  apiKey: "AIzaSyB7A8ExfYr4wlO715hJPWixmMOZw9rjZmA",
-  authDomain: "podcastld.firebaseapp.com",
-  projectId: "podcastld",
-  storageBucket: "podcastld.firebasestorage.app",
-  messagingSenderId: "840314255466",
-  appId: "1:840314255466:web:a090f7a7befbdde75db213"
+  apiKey: "AIzaSyBofPAKTdKGViqfBoCgO38Cl1ljigjpuUI",
+  authDomain: "podcastld77.firebaseapp.com",
+  projectId: "podcastld77",
+  storageBucket: "podcastld77.firebasestorage.app",
+  messagingSenderId: "705191404419",
+  appId: "1:705191404419:web:372cf334def7d0b913ccb6",
+  measurementId: "G-CR6R2ZV96P"
 };
 
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
-const portalAppId = 'podcastld77-portal'; 
+const appId = 'podcastld77-portal'; 
 
 const currentHour = new Date().getHours();
 const isNightTime = currentHour < 7 || currentHour >= 18;
@@ -51,7 +51,7 @@ export default function App() {
   const [menuView, setMenuView] = useState('series'); 
   const [selectedSeriesId, setSelectedSeriesId] = useState(null);
   const [expandedSeason, setExpandedSeason] = useState('1'); 
-  const [sortOrder, setSortOrder] = useState('asc'); // asc = 1 to 10 (Oldest to Newest)
+  const [sortOrder, setSortOrder] = useState('asc'); 
   
   const [intensity, setIntensity] = useState(0); 
   const [isDarkMode, setIsDarkMode] = useState(isNightTime);
@@ -103,16 +103,15 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    const sCol = collection(db, 'artifacts', portalAppId, 'public', 'data', 'series');
+    const sCol = collection(db, 'artifacts', appId, 'public', 'data', 'series');
     const unsubS = onSnapshot(sCol, (snap) => {
         if (!snap.empty) setSeries(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     
-    const eCol = collection(db, 'artifacts', portalAppId, 'public', 'data', 'episodes');
+    const eCol = collection(db, 'artifacts', appId, 'public', 'data', 'episodes');
     const unsubE = onSnapshot(eCol, (snap) => {
       if (!snap.empty) {
         const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        // Default base load is oldest first so 1 to 10 plays correctly in sequence
         const sorted = data.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
         setEpisodes(sorted);
         if (!currentTrack && sorted.length > 0) setCurrentTrack(sorted[0]);
@@ -153,34 +152,11 @@ export default function App() {
       const source = ctx.createMediaElementSource(audioRef.current);
       const analyzer = ctx.createAnalyser();
       analyzer.fftSize = 512;
-      const gain = ctx.createGain(); gain.gain.value = 0; gain.connect(ctx.destination); humGainRef.current = gain;
-      const eq = ctx.createBiquadFilter();
-      const delay = ctx.createDelay();
-      const spatialWet = ctx.createGain();
-      const delayFeedback = ctx.createGain();
-      delay.delayTime.value = 0.15; delayFeedback.gain.value = 0.2;
-      delay.connect(delayFeedback); delayFeedback.connect(delay); delay.connect(spatialWet);
-      source.connect(eq); eq.connect(analyzer); eq.connect(delay); spatialWet.connect(analyzer);
+      source.connect(analyzer);
       analyzer.connect(ctx.destination);
-      eqRef.current = eq; spatialWetRef.current = spatialWet;
       audioContextRef.current = ctx; analyzerRef.current = analyzer;
-      applyAudioProfile(activePreset, ctx, eq, spatialWet);
     } catch (e) { console.error(e); }
   };
-
-  const applyAudioProfile = (preset, ctx, eq, wet) => {
-    if (!ctx || !eq || !wet) return;
-    const now = ctx.currentTime;
-    eq.frequency.cancelScheduledValues(now); eq.gain.cancelScheduledValues(now); wet.gain.cancelScheduledValues(now);
-    if (preset === 'studio') { eq.type = 'peaking'; eq.frequency.setTargetAtTime(1000, now, 0.5); eq.gain.setTargetAtTime(2, now, 0.5); wet.gain.setTargetAtTime(0, now, 0.5); }
-    else if (preset === 'midnight') { eq.type = 'lowpass'; eq.frequency.setTargetAtTime(1200, now, 0.5); wet.gain.setTargetAtTime(0, now, 0.5); }
-    else if (preset === 'vivid') { eq.type = 'highshelf'; eq.frequency.setTargetAtTime(3000, now, 0.5); eq.gain.setTargetAtTime(4, now, 0.5); wet.gain.setTargetAtTime(0, now, 0.5); }
-    else if (preset === 'spatial') { eq.type = 'lowshelf'; eq.frequency.setTargetAtTime(300, now, 0.5); eq.gain.setTargetAtTime(-2, now, 0.5); wet.gain.setTargetAtTime(0.35, now, 0.5); }
-  };
-
-  useEffect(() => {
-    if (audioContextRef.current) applyAudioProfile(activePreset, audioContextRef.current, eqRef.current, spatialWetRef.current);
-  }, [activePreset]);
 
   const togglePlay = async () => {
     triggerHaptic('light');
@@ -217,7 +193,23 @@ export default function App() {
     }, 100);
   };
 
-  // MAIN RENDER LOOP (Visualizer + Haptics)
+  const handleTrackEnd = () => {
+    if (!currentTrack) {
+      setIsPlaying(false);
+      return;
+    }
+    const currentSeriesEps = episodes.filter(e => e.seriesId === currentTrack.seriesId);
+    const sortedEps = currentSeriesEps.sort((a, b) => sortOrder === 'asc' ? (a.timestamp || 0) - (b.timestamp || 0) : (b.timestamp || 0) - (a.timestamp || 0));
+    const currentSeasonEps = sortedEps.filter(e => (e.season || '1') === (currentTrack.season || '1'));
+    
+    const idx = currentSeasonEps.findIndex(e => e.id === currentTrack.id);
+    if (idx >= 0 && idx < currentSeasonEps.length - 1) {
+      playEpisode(currentSeasonEps[idx + 1]);
+    } else {
+      setIsPlaying(false);
+    }
+  };
+
   useEffect(() => {
     let animationId;
     let silenceFrames = 0;
@@ -229,7 +221,6 @@ export default function App() {
       const w = canvas.width, h = canvas.height, mid = h / 2;
       let curIntensity = 0;
       
-      // Apply motion blur effect instead of a hard clear
       ctx.fillStyle = isDarkMode ? 'rgba(10, 10, 10, 0.3)' : 'rgba(232, 231, 231, 0.3)';
       ctx.fillRect(0, 0, w, h);
       
@@ -237,7 +228,6 @@ export default function App() {
         const dataArray = new Uint8Array(analyzerRef.current.frequencyBinCount);
         analyzerRef.current.getByteFrequencyData(dataArray);
         
-        // Calculate overall intensity for the background pulse
         let sum = 0; for(let i=0; i<dataArray.length; i++) sum += dataArray[i];
         curIntensity = (sum / dataArray.length) / 255;
 
@@ -253,37 +243,26 @@ export default function App() {
           }
         } else silenceFrames = 0;
         
-        // Draw the True Frequency Spectrum
         ctx.beginPath();
         ctx.lineWidth = 1.5 + (curIntensity * 12);
         ctx.strokeStyle = brandAccent;
-        ctx.lineCap = 'round'; 
-        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
         ctx.moveTo(0, mid);
         
-        // Focus on vocal/mid frequencies (first ~40% of bins)
         const limit = Math.floor(dataArray.length / 2.5); 
         const slices = w / limit;
         let x = 0;
-        
         for (let i = 0; i < limit; i++) {
           const amp = dataArray[i] / 255;
-          // Creates a smooth envelope so the edges of the wave taper to 0
           const pin = Math.sin((i / limit) * Math.PI);
           const y = mid + (i % 2 === 0 ? 1 : -1) * (amp * h * 0.45) * pin;
-          ctx.lineTo(x, y); 
-          x += slices;
+          ctx.lineTo(x, y); x += slices;
         }
         ctx.lineTo(w, mid);
         ctx.stroke();
-
       } else {
-        // Idle liquid wave when paused
         if (currentTrack) curIntensity = 0.02 + Math.sin(Date.now() / 1000) * 0.01;
-        
-        ctx.beginPath(); 
-        ctx.lineWidth = 1.5 + (curIntensity * 10); 
-        ctx.strokeStyle = brandAccent;
+        ctx.beginPath(); ctx.lineWidth = 1.5 + (curIntensity * 10); ctx.strokeStyle = brandAccent;
         ctx.moveTo(0, mid);
         for (let i = 0; i < 80; i++) {
           const y = mid + (i % 2 === 0 ? 1 : -1) * (curIntensity * h * 0.4) * Math.sin((i / 80) * Math.PI);
@@ -291,7 +270,6 @@ export default function App() {
         }
         ctx.lineTo(w, mid); ctx.stroke();
       }
-      
       setIntensity(curIntensity);
     };
     render();
@@ -321,14 +299,14 @@ export default function App() {
   };
 
   const handleSaveSeries = async () => {
-    const col = collection(db, 'artifacts', portalAppId, 'public', 'data', 'series');
+    const col = collection(db, 'artifacts', appId, 'public', 'data', 'series');
     if (editingId) await updateDoc(doc(col, editingId), { ...newSeries });
     else await addDoc(col, { ...newSeries, timestamp: Date.now() });
     setNewSeries({ title: '', description: '' }); setEditingId(null);
   };
 
   const handleSaveEpisode = async () => {
-    const col = collection(db, 'artifacts', portalAppId, 'public', 'data', 'episodes');
+    const col = collection(db, 'artifacts', appId, 'public', 'data', 'episodes');
     const payload = { ...newEp, content: newEp.content.split('\n').filter(l => l.trim() !== '') };
     if (editingId) await updateDoc(doc(col, editingId), payload);
     else await addDoc(col, { ...payload, timestamp: Date.now() });
@@ -345,42 +323,20 @@ export default function App() {
 
   const handlePlaySection = (seasonNum) => {
     const eps = episodesBySeason[seasonNum];
-    if (eps && eps.length > 0) {
-      playEpisode(eps[0]);
-    }
+    if (eps && eps.length > 0) playEpisode(eps[0]);
   };
-
-  const handleTrackEnd = () => {
-    if (!currentTrack) {
-      setIsPlaying(false);
-      return;
-    }
-    const currentSeriesEps = episodes.filter(e => e.seriesId === currentTrack.seriesId);
-    const sortedEps = currentSeriesEps.sort((a, b) => sortOrder === 'asc' ? (a.timestamp || 0) - (b.timestamp || 0) : (b.timestamp || 0) - (a.timestamp || 0));
-    const currentSeasonEps = sortedEps.filter(e => (e.season || '1') === (currentTrack.season || '1'));
-    
-    const idx = currentSeasonEps.findIndex(e => e.id === currentTrack.id);
-    if (idx >= 0 && idx < currentSeasonEps.length - 1) {
-      playEpisode(currentSeasonEps[idx + 1]);
-    } else {
-      setIsPlaying(false);
-    }
-  };
-
-  const dynamicFontWeight = Math.min(900, Math.max(100, 100 + Math.floor(intensity * 1200)));
 
   return (
-    <div className={`min-h-screen w-full flex flex-col font-sans overflow-hidden relative transition-colors duration-1000 selection:bg-[var(--brand-accent)] selection:text-white ${isDarkMode ? 'bg-[#000000] text-[#e8e7e7]' : 'bg-[#e8e7e7] text-[#1a1a1a]'}`} style={{ backgroundColor: isFocused && isDarkMode ? `rgba(${15 + intensity * 40}, ${15 + intensity * 40}, ${15 + intensity * 40}, 1)` : undefined, '--brand-accent': brandAccent }}>
+    <div className={`min-h-screen w-full flex flex-col font-sans overflow-hidden relative transition-colors duration-1000 selection:bg-[var(--brand-accent)] selection:text-white ${isDarkMode ? 'bg-[#000000] text-[#e8e7e7]' : 'bg-[#e8e7e7] text-[#1a1a1a]'}`} style={{ '--brand-accent': brandAccent }}>
       
       <audio ref={audioRef} onEnded={handleTrackEnd} />
       
-      {/* PROGRESS TRACKER */}
       <svg className="fixed inset-0 w-full h-full pointer-events-none z-[100]" preserveAspectRatio="none" viewBox="0 0 100 100">
         <path d="M 0,0 L 100,0 L 100,100 L 0,100 Z" fill="none" stroke={brandAccent} strokeWidth="0.4" strokeDasharray="400" strokeDashoffset={400 - (progress * 4)} className="transition-all duration-300 ease-linear opacity-40" />
       </svg>
 
-      <div className="w-full h-full flex flex-col transition-all duration-700 z-10 flex-grow" onClick={() => menuOpen && setMenuOpen(false)}>
-        <header className={`absolute top-0 left-0 w-full p-6 md:p-8 flex justify-between items-center z-40 shrink-0 transition-all duration-1000 ${isFocused ? 'opacity-0 -translate-y-4 pointer-events-none' : 'opacity-100'}`}>
+      <div className="w-full h-full flex flex-col z-10 flex-grow" onClick={() => menuOpen && setMenuOpen(false)}>
+        <header className={`absolute top-0 left-0 w-full p-6 md:p-8 flex justify-between items-center z-40 transition-all duration-1000 ${isFocused ? 'opacity-0 -translate-y-4 pointer-events-none' : 'opacity-100'}`}>
           <button onClick={(e) => { e.stopPropagation(); triggerHaptic(); setMenuOpen(true); setMenuView('series'); }} className="opacity-80 hover:opacity-100 hover:text-[var(--brand-accent)] transition-all p-2 font-black uppercase tracking-widest text-[12px]">Library</button>
           <div className="flex items-center gap-4 md:gap-6">
             <button onClick={(e) => { e.stopPropagation(); triggerHaptic(); setIsDarkMode(!isDarkMode); }} className="p-2 opacity-60 hover:opacity-100 transition-all">{isDarkMode ? <Sun size={20} /> : <Moon size={20} />}</button>
@@ -388,20 +344,18 @@ export default function App() {
           </div>
         </header>
 
-        {/* md:-mt-16 visually pulls the player up to center it perfectly on desktop */}
         <main className="flex-grow flex flex-col items-center justify-center p-6 md:p-8 max-w-4xl mx-auto w-full relative z-10 pointer-events-none md:-mt-16">
           <div className={`w-full flex flex-col items-center transition-all duration-700 pointer-events-auto ${fxOpen || menuOpen || descOpen || adminOpen ? 'opacity-0 scale-95 blur-xl' : 'opacity-100 scale-100'}`}>
             <div className={`text-center mb-8 w-full max-w-lg transition-all duration-1000 ${isFocused ? 'opacity-0 translate-y-4 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
               <h1 className="text-4xl md:text-5xl font-black tracking-tighter mb-4 uppercase leading-tight break-words">
                 {currentTrack ? currentTrack.title : "No Active Track"}
               </h1>
-              <p className="text-[12px] font-bold uppercase tracking-[0.4em] opacity-70 mt-2">Psychotherapy & Reflection</p>
+              <p className="text-[12px] font-bold uppercase tracking-[0.4em] opacity-70 mt-2">Talk With Liam: Sessions</p>
             </div>
             <button onClick={() => setDescOpen(true)} className={`group flex items-center gap-3 mb-10 transition-all duration-1000 ${isFocused ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
               <span className="text-[12px] font-black uppercase tracking-[0.5em] opacity-80 hover:opacity-100" style={{ color: brandAccent }}>Episode Description</span>
             </button>
             
-            {/* EXPANDED CANVAS FOR DESKTOP / MONASTIC MODE */}
             <canvas ref={canvasRef} width="1200" height="500" className={`w-full transition-all duration-1000 ease-in-out ${isFocused ? 'h-48 md:h-[45vh] opacity-100' : 'h-32 md:h-56 opacity-90'} mb-12`} />
             
             <div className={`w-full flex flex-col items-center gap-10 transition-all duration-1000 ${isFocused ? 'opacity-0 translate-y-4 pointer-events-none' : 'opacity-100'}`}>
@@ -415,23 +369,14 @@ export default function App() {
         </main>
       </div>
 
-      {/* EPISODE DESCRIPTION OVERLAY */}
       <div className={`fixed inset-0 z-[120] backdrop-blur-3xl transition-all duration-700 ${descOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} ${isDarkMode ? 'bg-black/95' : 'bg-white/95'}`} onClick={() => setDescOpen(false)}>
         <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center" onClick={e => e.stopPropagation()}>
           <button onClick={() => setDescOpen(false)} className="absolute top-8 right-8 p-4 opacity-70 hover:opacity-100"><X size={28} /></button>
           <div className="max-w-xl w-full">
             <p className="text-[12px] font-black uppercase tracking-[0.6em] mb-8" style={{ color: brandAccent }}>Episode Description</p>
-            <h2 className="text-2xl md:text-4xl font-black uppercase mb-12 leading-tight">{currentTrack?.title || 'No record selected'}</h2>
+            <h2 className="text-2xl md:text-4xl font-black uppercase mb-12 leading-tight">{currentTrack?.title}</h2>
             <div className="space-y-4 text-left mb-12 max-h-[40vh] overflow-y-auto pr-2 hide-scrollbar">
-              {currentTrack?.content ? (
-                Array.isArray(currentTrack.content) ? (
-                    currentTrack.content.map((t, i) => <p key={i} className="text-[14px] opacity-80 italic leading-relaxed">{t}</p>)
-                ) : (
-                    <p className="text-[14px] opacity-80 italic leading-relaxed">{currentTrack.content}</p>
-                )
-              ) : (
-                <p className="text-[14px] opacity-40 italic text-center">No structural description available for this session.</p>
-              )}
+              {currentTrack?.content?.map((t, i) => <p key={i} className="text-[14px] opacity-80 italic leading-relaxed">{t}</p>)}
             </div>
             <a href="https://talkwithliam.co.uk/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 group opacity-60 hover:opacity-100 transition-all justify-center">
                 <HeartPulse size={14} className="group-hover:text-[var(--brand-accent)]" />
@@ -441,45 +386,30 @@ export default function App() {
         </div>
       </div>
 
-      {/* SETTINGS OVERLAY */}
       <div className={`fixed inset-0 z-[110] backdrop-blur-md transition-opacity duration-500 ${fxOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} ${isDarkMode ? 'bg-black/80' : 'bg-black/10'}`} onClick={() => setFxOpen(false)}>
         <aside className={`absolute right-0 top-0 bottom-0 w-[85%] max-w-sm p-8 md:p-10 flex flex-col transform transition-transform duration-700 ${fxOpen ? 'translate-x-0' : 'translate-x-full'} ${isDarkMode ? 'bg-[#0a0a0a]' : 'bg-[#e8e7e7]'}`} onClick={e => e.stopPropagation()}>
           <div className={`flex justify-between items-center mb-8 border-b pb-6 ${isDarkMode ? 'border-white/10' : 'border-black/10'}`}>
             <h2 className="text-[12px] font-black uppercase tracking-[0.5em] opacity-80">System Config</h2>
             <button onClick={() => setFxOpen(false)} className="p-2 opacity-60 hover:opacity-100"><X size={20} /></button>
           </div>
-
-          <div className="flex-grow overflow-y-auto hide-scrollbar pr-2">
+          <div className="flex-grow overflow-y-auto hide-scrollbar">
             <div className="mb-10">
               <span className="text-[12px] font-black uppercase tracking-widest opacity-40 mb-4 block">Haptics</span>
-              {[
-                { id: 'pulse', label: 'Sensory Pulse', active: hapticHeartbeat, toggle: () => setHapticHeartbeat(!hapticHeartbeat), Icon: Activity },
-                { id: 'bass', label: 'Tactile Resonance', active: hapticSubBass, toggle: () => setHapticSubBass(!hapticSubBass), Icon: Waves }
-              ].map(item => (
-                <div key={item.id} onClick={() => { triggerHaptic(); item.toggle(); }} className={`group py-5 border-b border-current/5 cursor-pointer flex items-center justify-between transition-all`}>
-                  <div className="flex items-center gap-4">
-                    <item.Icon size={16} className={`transition-colors ${item.active ? 'text-[var(--brand-accent)]' : 'opacity-40'}`} />
-                    <h3 className={`text-[13px] font-black tracking-tight transition-all ${item.active ? 'text-[var(--brand-accent)] translate-x-1' : 'opacity-80'}`}>{item.label}</h3>
-                  </div>
-                  <div className={`w-2 h-2 rounded-full transition-all ${item.active ? 'bg-[var(--brand-accent)] shadow-[0_0_8px_var(--brand-accent)]' : 'bg-current opacity-20'}`} />
-                </div>
-              ))}
+              <div onClick={() => setHapticHeartbeat(!hapticHeartbeat)} className="py-4 border-b border-current/5 cursor-pointer flex justify-between items-center">
+                <div className="flex items-center gap-3"><Activity size={16}/><span className="text-[13px] font-bold">Sensory Pulse</span></div>
+                <div className={`w-2 h-2 rounded-full ${hapticHeartbeat ? 'bg-[var(--brand-accent)]' : 'bg-current opacity-20'}`}/>
+              </div>
+              <div onClick={() => setHapticSubBass(!hapticSubBass)} className="py-4 border-b border-current/5 cursor-pointer flex justify-between items-center">
+                <div className="flex items-center gap-3"><Waves size={16}/><span className="text-[13px] font-bold">Tactile Resonance</span></div>
+                <div className={`w-2 h-2 rounded-full ${hapticSubBass ? 'bg-[var(--brand-accent)]' : 'bg-current opacity-20'}`}/>
+              </div>
             </div>
-
-            <div className="mb-10">
-              <span className="text-[12px] font-black uppercase tracking-widest opacity-40 mb-4 block">Audio Signal Processing</span>
-              {[
-                { id: 'studio', name: 'Studio Presence', Icon: Mic2 },
-                { id: 'midnight', name: 'Midnight Warmth', Icon: Moon },
-                { id: 'vivid', name: 'Vivid Clarity', Icon: Sparkles },
-                { id: 'spatial', name: 'Spatial Room', Icon: Tv }
-              ].map(p => (
-                <div key={p.id} onClick={() => { triggerHaptic(); setActivePreset(p.id); }} className={`group py-5 border-b border-current/5 cursor-pointer flex items-center justify-between transition-all`}>
-                  <div className="flex items-center gap-4">
-                    <p.Icon size={16} className={`transition-colors ${activePreset === p.id ? 'text-[var(--brand-accent)]' : 'opacity-40'}`} />
-                    <h3 className={`text-[13px] font-black tracking-tight transition-all ${activePreset === p.id ? 'text-[var(--brand-accent)] translate-x-1' : 'opacity-80'}`}>{p.name}</h3>
-                  </div>
-                  <div className={`w-2 h-2 rounded-full transition-all ${activePreset === p.id ? 'bg-[var(--brand-accent)] shadow-[0_0_8px_var(--brand-accent)]' : 'bg-transparent'}`} />
+            <div>
+              <span className="text-[12px] font-black uppercase tracking-widest opacity-40 mb-4 block">Audio Profiles</span>
+              {['studio', 'midnight', 'vivid', 'spatial'].map(p => (
+                <div key={p} onClick={() => setActivePreset(p)} className="py-4 border-b border-current/5 cursor-pointer flex justify-between items-center capitalize">
+                  <span className={`text-[13px] font-bold ${activePreset === p ? 'text-[var(--brand-accent)]' : ''}`}>{p}</span>
+                  {activePreset === p && <div className="w-2 h-2 rounded-full bg-[var(--brand-accent)]"/>}
                 </div>
               ))}
             </div>
@@ -488,131 +418,102 @@ export default function App() {
         </aside>
       </div>
 
-      {/* ARCHIVE MENU */}
       <div className={`fixed inset-0 z-[100] backdrop-blur-md transition-opacity duration-500 ${menuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} ${isDarkMode ? 'bg-black/80' : 'bg-black/10'}`} onClick={() => setMenuOpen(false)}>
         <aside className={`absolute left-0 top-0 bottom-0 w-[85%] max-w-sm p-8 md:p-10 flex flex-col transform transition-transform duration-700 ${menuOpen ? 'translate-x-0' : '-translate-x-full'} ${isDarkMode ? 'bg-[#0a0a0a]' : 'bg-[#e8e7e7]'}`} onClick={e => e.stopPropagation()}>
-          <div className={`flex justify-between items-center mb-6 border-b pb-6 ${isDarkMode ? 'border-[#e8e7e7]/10' : 'border-[#1a1a1a]/10'}`}>
+          <div className={`flex justify-between items-center mb-6 border-b pb-6 ${isDarkMode ? 'border-white/10' : 'border-black/10'}`}>
             <h2 className="text-[12px] font-black uppercase tracking-[0.5em] opacity-80">{menuView === 'series' ? 'Library' : 'Episodes'}</h2>
             <button onClick={() => setMenuOpen(false)} className="p-2 opacity-60 hover:opacity-100"><X size={20} /></button>
           </div>
-          <div className="flex-grow overflow-y-auto hide-scrollbar pr-2">
+          <div className="flex-grow overflow-y-auto hide-scrollbar">
             {menuView === 'series' && series.map(s => (
-              <div key={s.id} onClick={() => { setSelectedSeriesId(s.id); setMenuView('episodes'); }} className={`group py-6 border-b border-current/5 cursor-pointer flex items-center justify-between transition-all`}>
+              <div key={s.id} onClick={() => { setSelectedSeriesId(s.id); setMenuView('episodes'); }} className="py-6 border-b border-current/5 cursor-pointer flex items-center justify-between group">
                 <h3 className="text-[15px] font-black tracking-tight group-hover:translate-x-2 transition-transform uppercase">{s.title}</h3>
                 <ChevronRight size={16} className="text-[var(--brand-accent)] opacity-80" />
               </div>
             ))}
             {menuView === 'episodes' && (
               <div className="space-y-6">
-                <button onClick={() => setMenuView('series')} className="flex items-center gap-2 text-[12px] font-black uppercase opacity-80 hover:opacity-100 hover:text-[var(--brand-accent)]"><ArrowLeft size={12}/> Back</button>
-                
+                <button onClick={() => setMenuView('series')} className="flex items-center gap-2 text-[12px] font-black uppercase opacity-80 hover:text-[var(--brand-accent)]"><ArrowLeft size={12}/> Back</button>
                 <div className="mb-6 flex flex-col items-start gap-2">
                   <h3 className="text-[18px] font-black tracking-tight uppercase leading-tight">{currentSeries?.title}</h3>
-                  <button onClick={() => setSortOrder(s => s === 'asc' ? 'desc' : 'asc')} className="text-[9px] font-black uppercase tracking-widest opacity-60 hover:opacity-100 hover:text-[var(--brand-accent)] transition-all">
+                  <button onClick={() => setSortOrder(s => s === 'asc' ? 'desc' : 'asc')} className="text-[9px] font-black uppercase tracking-widest opacity-60 hover:text-[var(--brand-accent)]">
                     {sortOrder === 'asc' ? 'Order: 1 to 10' : 'Order: Newest'}
                   </button>
                 </div>
-
                 {Object.keys(episodesBySeason).sort().map(seasonNum => (
                   <div key={seasonNum} className="space-y-2">
-                    <div className="flex items-center justify-between py-2 border-b border-transparent hover:border-current/10 transition-colors">
-                      <button onClick={() => setExpandedSeason(expandedSeason === seasonNum ? null : seasonNum)} className="flex items-center gap-3 opacity-80 hover:opacity-100">
-                        <span className="text-[12px] font-black uppercase tracking-widest">Season {seasonNum}</span>
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); handlePlaySection(seasonNum); }} className="text-[9px] font-black uppercase tracking-widest opacity-60 hover:opacity-100 hover:text-[var(--brand-accent)] transition-all">
-                        Play All
-                      </button>
+                    <div className="flex items-center justify-between py-2">
+                      <button onClick={() => setExpandedSeason(expandedSeason === seasonNum ? null : seasonNum)} className="text-[12px] font-black uppercase tracking-widest opacity-80">Season {seasonNum}</button>
+                      <button onClick={() => handlePlaySection(seasonNum)} className="text-[9px] font-black uppercase tracking-widest opacity-60 hover:text-[var(--brand-accent)]">Play All</button>
                     </div>
-                    
                     <div className={`space-y-1 overflow-hidden transition-all duration-500 ${expandedSeason === seasonNum ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                      {episodesBySeason[seasonNum].map(ep => {
-                        const isNew = Date.now() - (ep.timestamp || 0) < 604800000;
-                        return (
-                          <div key={ep.id} onClick={() => playEpisode(ep)} className={`py-5 border-b cursor-pointer flex justify-between items-center ${isDarkMode ? 'border-white/5' : 'border-black/5'}`} style={{ borderColor: currentTrack?.id === ep.id ? brandAccent : undefined }}>
-                            <div className="flex items-center gap-3">
-                                {isNew && <span className="text-[10px] font-black text-[var(--brand-accent)] border border-[var(--brand-accent)] px-1 rounded-sm uppercase">New</span>}
-                                <h3 className={`text-[14px] font-bold ${currentTrack?.id === ep.id ? 'text-[var(--brand-accent)]' : ''}`}>{ep.title}</h3>
-                            </div>
-                            <span className="text-[11px] font-mono opacity-80 uppercase">{ep.duration}</span>
-                          </div>
-                        );
-                      })}
+                      {episodesBySeason[seasonNum].map(ep => (
+                        <div key={ep.id} onClick={() => playEpisode(ep)} className={`py-4 border-b cursor-pointer flex justify-between items-center ${isDarkMode ? 'border-white/5' : 'border-black/5'} ${currentTrack?.id === ep.id ? 'text-[var(--brand-accent)] border-[var(--brand-accent)]' : ''}`}>
+                          <h3 className="text-[13px] font-bold">{ep.title}</h3>
+                          <span className="text-[10px] font-mono opacity-40">{ep.duration}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
-          <div className={`mt-auto pt-6 flex flex-wrap items-center gap-4 border-t ${isDarkMode ? 'border-white/10' : 'border-black/10'}`}>
-            <a href="https://talkwithliam.co.uk/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-all"><HeartPulse size={12}/><span className="text-[11px] font-black uppercase tracking-widest">Practice</span></a>
-            <a href="https://share.google/67Y6tixM6IhnO4jRU" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-all"><Code2 size={12}/><span className="text-[11px] font-black uppercase tracking-widest">Dev</span></a>
-            <button onClick={() => { setAdminOpen(true); setMenuOpen(false); }} className="flex items-center gap-1.5 opacity-60 hover:opacity-100 ml-auto"><Shield size={12}/><span className="text-[11px] font-black uppercase tracking-widest">Admin</span></button>
+          <div className={`mt-auto pt-6 flex items-center justify-between border-t ${isDarkMode ? 'border-white/10' : 'border-black/10'}`}>
+            <a href="https://talkwithliam.co.uk/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 opacity-60 hover:text-[var(--brand-accent)]"><HeartPulse size={12}/><span className="text-[11px] font-black uppercase tracking-widest">Practice</span></a>
+            <button onClick={() => setAdminOpen(true)} className="flex items-center gap-1.5 opacity-60 hover:text-[var(--brand-accent)]"><Shield size={12}/><span className="text-[11px] font-black uppercase tracking-widest">Admin</span></button>
           </div>
         </aside>
       </div>
 
-      {/* ADMIN PANEL */}
       <div className={`fixed inset-0 z-[130] backdrop-blur-3xl transition-all duration-700 ${adminOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} ${isDarkMode ? 'bg-black/98' : 'bg-white/98'}`}>
         <div className="flex flex-col items-center justify-center min-h-screen p-6 relative">
-          <button onClick={() => { setAdminOpen(false); setIsAuthorized(false); setEditingId(null); }} className="absolute top-6 right-6 p-4 opacity-70 hover:opacity-100"><X size={24} /></button>
+          <button onClick={() => { setAdminOpen(false); setIsAuthorized(false); }} className="absolute top-6 right-6 p-4 opacity-70 hover:opacity-100"><X size={24} /></button>
           {!isAuthorized ? (
-            <div className="max-w-xs w-full space-y-6 text-center" onClick={e => e.stopPropagation()}>
-              <Lock size={20} className="mx-auto mb-6" style={{ color: brandAccent }} />
-              <input type="password" placeholder="****" value={adminPass} onChange={e => setAdminPass(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdminGate()} autoComplete="new-password" spellCheck="false" className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none text-center border border-transparent focus:border-[var(--brand-accent)] text-[14px]" />
+            <div className="max-w-xs w-full space-y-6 text-center">
+              <Lock size={20} className="mx-auto" style={{ color: brandAccent }} />
+              <input type="password" placeholder="****" value={adminPass} onChange={e => setAdminPass(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdminGate()} className="w-full bg-black/5 dark:bg-white/5 p-4 rounded-xl outline-none text-center border focus:border-[var(--brand-accent)]" />
               <button onClick={handleAdminGate} className="w-full py-4 text-white font-black uppercase tracking-widest rounded-xl" style={{ backgroundColor: brandAccent }}>Unlock</button>
             </div>
           ) : (
-            <div className="max-w-2xl w-full p-2 overflow-y-auto max-h-[85vh] hide-scrollbar" onClick={e => e.stopPropagation()}>
+            <div className="max-w-2xl w-full p-2 overflow-y-auto max-h-[85vh] hide-scrollbar">
                <div className="flex justify-center gap-6 mb-8">
-                <button onClick={() => { setAdminTab('episodes'); setEditingId(null); }} className={`text-[12px] font-black uppercase tracking-widest pb-1 border-b-2 transition-all ${adminTab === 'episodes' ? '' : 'border-transparent opacity-40'}`} style={{ borderColor: adminTab === 'episodes' ? brandAccent : undefined, color: adminTab === 'episodes' ? brandAccent : undefined }}>Episodes</button>
-                <button onClick={() => { setAdminTab('series'); setEditingId(null); }} className={`text-[12px] font-black uppercase tracking-widest pb-1 border-b-2 transition-all ${adminTab === 'series' ? '' : 'border-transparent opacity-40'}`} style={{ borderColor: adminTab === 'series' ? brandAccent : undefined, color: adminTab === 'series' ? brandAccent : undefined }}>Categories</button>
+                <button onClick={() => setAdminTab('episodes')} className={`text-[12px] font-black uppercase pb-1 border-b-2 transition-all ${adminTab === 'episodes' ? 'border-[var(--brand-accent)] text-[var(--brand-accent)]' : 'border-transparent opacity-40'}`}>Episodes</button>
+                <button onClick={() => setAdminTab('series')} className={`text-[12px] font-black uppercase pb-1 border-b-2 transition-all ${adminTab === 'series' ? 'border-[var(--brand-accent)] text-[var(--brand-accent)]' : 'border-transparent opacity-40'}`}>Categories</button>
               </div>
-              
               {adminTab === 'series' ? (
                 <div className="space-y-4 max-w-md mx-auto">
-                  <input type="text" placeholder="Title" value={newSeries.title} onChange={e => setNewSeries({...newSeries, title: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none text-[14px]" />
-                  <input type="text" placeholder="Desc" value={newSeries.description} onChange={e => setNewSeries({...newSeries, description: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none text-[14px]" />
-                  <div className="flex gap-2">
-                    <button onClick={handleSaveSeries} className="flex-grow py-3 border font-black uppercase tracking-widest rounded-xl transition-all" style={{ borderColor: brandAccent, color: brandAccent }}>{editingId ? 'Update Category' : 'Add Category'}</button>
-                    {editingId && <button onClick={() => { setEditingId(null); setNewSeries({title:'', description:''}); }} className="px-4 py-3 border border-red-500/20 text-red-500 font-black uppercase rounded-xl">X</button>}
-                  </div>
+                  <input type="text" placeholder="Title" value={newSeries.title} onChange={e => setNewSeries({...newSeries, title: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none" />
+                  <input type="text" placeholder="Desc" value={newSeries.description} onChange={e => setNewSeries({...newSeries, description: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none" />
+                  <button onClick={handleSaveSeries} className="w-full py-3 border font-black uppercase tracking-widest rounded-xl" style={{ borderColor: brandAccent, color: brandAccent }}>Save Category</button>
                   <div className="pt-4 space-y-2">
                     {series.map(s => (
                       <div key={s.id} className="flex justify-between items-center p-4 bg-black/5 dark:bg-white/5 rounded-lg">
-                        <span className="text-[14px] font-bold opacity-80">{s.title}</span>
-                        <div className="flex gap-3">
-                            <button onClick={() => handleEditSeries(s)} className="text-blue-500 opacity-60 hover:opacity-100 p-1"><Edit3 size={16}/></button>
-                            <button onClick={async () => { if(window.confirm('Delete?')) await deleteDoc(doc(db, 'artifacts', portalAppId, 'public', 'data', 'series', s.id)); }} className="text-red-500 opacity-60 hover:opacity-100 p-1"><Trash2 size={16}/></button>
-                        </div>
+                        <span className="text-[14px] font-bold">{s.title}</span>
+                        <button onClick={async () => { if(window.confirm('Delete?')) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'series', s.id)); }} className="text-red-500 opacity-60 hover:opacity-100 p-1"><Trash2 size={16}/></button>
                       </div>
                     ))}
                   </div>
                 </div>
               ) : (
                 <div className="space-y-4 max-w-md mx-auto">
-                  <select value={newEp.seriesId} onChange={e => setNewEp({...newEp, seriesId: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none text-[14px]">
+                  <select value={newEp.seriesId} onChange={e => setNewEp({...newEp, seriesId: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none">
                     <option value="">Select Category...</option>
                     {series.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
                   </select>
-                  <input type="text" placeholder="Title" value={newEp.title} onChange={e => setNewEp({...newEp, title: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none text-[14px]" />
+                  <input type="text" placeholder="Title" value={newEp.title} onChange={e => setNewEp({...newEp, title: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none" />
                   <div className="flex gap-2">
-                    <input type="text" placeholder="Duration (eg 42:00)" value={newEp.duration} onChange={e => setNewEp({...newEp, duration: e.target.value})} className="flex-grow bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none text-[14px]" />
-                    <input type="text" placeholder="Season" value={newEp.season} onChange={e => setNewEp({...newEp, season: e.target.value})} className="w-20 bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none text-[14px]" />
+                    <input type="text" placeholder="Duration (eg 42:00)" value={newEp.duration} onChange={e => setNewEp({...newEp, duration: e.target.value})} className="flex-grow bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none" />
+                    <input type="text" placeholder="Season" value={newEp.season} onChange={e => setNewEp({...newEp, season: e.target.value})} className="w-20 bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none" />
                   </div>
-                  <input type="text" placeholder="Audio Path (URL)" value={newEp.fileId} onChange={e => setNewEp({...newEp, fileId: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none text-[14px]" />
-                  <textarea placeholder="Description" rows={4} value={newEp.content} onChange={e => setNewEp({...newEp, content: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none text-[14px]" />
-                  <div className="flex gap-2">
-                    <button onClick={handleSaveEpisode} className="flex-grow py-4 text-white font-black uppercase tracking-widest rounded-xl" style={{ backgroundColor: brandAccent }}>{editingId ? 'Update Episode' : 'Publish Episode'}</button>
-                    {editingId && <button onClick={() => { setEditingId(null); setNewEp({title: '', duration: '', content: '', fileId: '', seriesId: '', season: '1'}); }} className="px-5 border border-red-500/20 text-red-500 font-black uppercase rounded-xl">X</button>}
-                  </div>
+                  <input type="text" placeholder="Audio Path (audio/filename.mp3)" value={newEp.fileId} onChange={e => setNewEp({...newEp, fileId: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none" />
+                  <textarea placeholder="Description" rows={4} value={newEp.content} onChange={e => setNewEp({...newEp, content: e.target.value})} className="w-full bg-black/10 dark:bg-white/10 p-4 rounded-xl outline-none" />
+                  <button onClick={handleSaveEpisode} className="w-full py-4 text-white font-black uppercase tracking-widest rounded-xl" style={{ backgroundColor: brandAccent }}>Publish Episode</button>
                   <div className="pt-4 space-y-2 pb-10">
                     {episodes.map(ep => (
                       <div key={ep.id} className="flex justify-between items-center p-4 bg-black/5 dark:bg-white/5 rounded-lg">
-                        <span className="text-[12px] font-bold opacity-80 truncate max-w-[200px]">{ep.title}</span>
-                        <div className="flex gap-3">
-                            <button onClick={() => handleEditEpisode(ep)} className="text-blue-500 opacity-60 hover:opacity-100 p-1"><Edit3 size={16}/></button>
-                            <button onClick={async () => { if(window.confirm('Delete?')) await deleteDoc(doc(db, 'artifacts', portalAppId, 'public', 'data', 'episodes', ep.id)); }} className="text-red-500 opacity-60 hover:opacity-100 p-1"><Trash2 size={16}/></button>
-                        </div>
+                        <span className="text-[12px] font-bold truncate max-w-[200px]">{ep.title}</span>
+                        <button onClick={async () => { if(window.confirm('Delete?')) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'episodes', ep.id)); }} className="text-red-500 opacity-60 hover:opacity-100 p-1"><Trash2 size={16}/></button>
                       </div>
                     ))}
                   </div>
@@ -622,11 +523,7 @@ export default function App() {
           )}
         </div>
       </div>
-
-      <style>{`
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      `}</style>
+      <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
     </div>
   );
 }
