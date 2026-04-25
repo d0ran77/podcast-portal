@@ -304,7 +304,11 @@ export default function App() {
         <main className="flex-grow flex flex-col items-center justify-center p-6 max-w-4xl mx-auto w-full relative z-10">
           <div className={`w-full flex flex-col items-center transition-all duration-700 pointer-events-auto ${fxOpen || menuOpen || descOpen || adminOpen ? 'opacity-0 scale-95 blur-xl' : 'opacity-100 scale-100'}`}>
             <div className={`text-center mb-8 w-full max-w-lg transition-all duration-1000 ${isFocused ? 'opacity-30 scale-90 translate-y-4' : 'opacity-100'}`}>
-              <h1 className="text-4xl md:text-5xl font-black tracking-tighter mb-4 uppercase leading-tight" style={{ letterSpacing: 'calc(var(--rms-intensity) * 0.2em)' }}>
+              {/* Reactive Font Title Restored */}
+              <h1 
+                className="text-4xl md:text-5xl font-black tracking-tighter mb-4 uppercase leading-tight break-words"
+                style={{ letterSpacing: 'calc(var(--rms-intensity) * 0.25em)' }}
+              >
                 {currentTrack ? currentTrack.title : "Talk With Liam"}
               </h1>
               
